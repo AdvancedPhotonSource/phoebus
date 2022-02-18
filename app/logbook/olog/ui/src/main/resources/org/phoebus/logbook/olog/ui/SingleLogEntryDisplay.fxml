@@ -79,7 +79,7 @@
                                     </GridPane.margin>
                                 </ImageView>
                                 <Label fx:id="tags" text="Tags" GridPane.columnIndex="1" GridPane.rowIndex="1" />
-                                <Label fx:id="level" text="Shift Start" GridPane.columnIndex="2" GridPane.halignment="RIGHT" GridPane.hgrow="ALWAYS" GridPane.rowIndex="1">
+                                <Label fx:id="level" text="Shift Start" GridPane.columnIndex="2" GridPane.halignment="RIGHT" GridPane.hgrow="ALWAYS" GridPane.rowIndex="1" visible="false" >
                                     <GridPane.margin>
                                         <Insets right="5.0" />
                                     </GridPane.margin>

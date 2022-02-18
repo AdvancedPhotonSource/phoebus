@@ -221,7 +221,8 @@ public class FieldsViewController implements Initializable {
         titleProperty.set(logEntry.getTitle());
 
         textArea.textProperty().bindBidirectional(descriptionProperty);
-        descriptionProperty.set(logEntry.getDescription() != null ? logEntry.getDescription() : "");
+        String defaultEntryTemplate = "# System: \n\n# Problem Description\n\n# Observation\n\n# Action Taken/Requested\n\n# Required Followup\n\n";
+        descriptionProperty.set(logEntry.getDescription() != null ? logEntry.getDescription() : defaultEntryTemplate);
 
         Image tagIcon = ImageCache.getImage(FieldsViewController.class, "/icons/add_tag.png");
         Image logbookIcon = ImageCache.getImage(FieldsViewController.class, "/icons/logbook-16.png");
