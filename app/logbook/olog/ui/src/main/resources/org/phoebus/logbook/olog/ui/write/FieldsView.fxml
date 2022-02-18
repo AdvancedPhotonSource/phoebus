@@ -28,11 +28,11 @@
             </TextField>
             <HBox alignment="CENTER_RIGHT" HBox.hgrow="ALWAYS">
                <children>
-                  <Label fx:id="levelLabel" alignment="CENTER_RIGHT" text="%Level">
+                  <Label fx:id="levelLabel" alignment="CENTER_RIGHT" text="%Level" disable="true" visible="false">
                      <HBox.margin>
                         <Insets right="5.0" />
                      </HBox.margin></Label>
-                  <ComboBox fx:id="levelSelector" minHeight="26.0" onAction="#setLevel" prefWidth="150.0" />
+                  <ComboBox fx:id="levelSelector" minHeight="26.0" onAction="#setLevel" prefWidth="150.0" disable="true" visible="false" />
                </children>
             </HBox>
          </children>
