@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2022 UChicago Argonne LLC, as operator of 
+ *  Copyright (c) 2022 UChicago Argonne LLC, as operator of
  *  Argonne National Laboratory.
  *
  *  This program is free software; you can redistribute it and/or
