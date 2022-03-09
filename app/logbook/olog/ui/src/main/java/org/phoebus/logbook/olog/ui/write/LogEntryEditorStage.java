@@ -69,8 +69,8 @@ public class LogEntryEditorStage extends Stage
                             .newInstance(parent, replyTo, completionHandler);
                 }
                 else if(clazz.isAssignableFrom(FieldsViewController.class)){
-                    return clazz.getConstructor(LogEntry.class)
-                            .newInstance(logEntry);
+                    return clazz.getConstructor(LogEntry.class, LogEntry.class)
+                            .newInstance(logEntry, replyTo);
                 }
                 else if(clazz.isAssignableFrom(AttachmentsViewController.class)){
                     return clazz.getConstructor(LogEntry.class)

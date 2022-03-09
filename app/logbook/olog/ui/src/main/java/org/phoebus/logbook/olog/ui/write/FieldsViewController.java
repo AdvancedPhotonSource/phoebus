@@ -143,9 +143,11 @@ public class FieldsViewController implements Initializable {
     private final SimpleBooleanProperty updateCredentials = new SimpleBooleanProperty();
     private final ReadOnlyBooleanProperty updateCredentialsProperty;
     private SimpleBooleanProperty inputValid = new SimpleBooleanProperty(false);
-
-    public FieldsViewController(LogEntry logEntry) {
+    private LogEntry replyTo;
+    
+    public FieldsViewController(LogEntry logEntry, LogEntry replyTo) {
         this.logEntry = logEntry;
+        this.replyTo = replyTo;
         updateCredentialsProperty = updateCredentials;
     }
 
@@ -222,8 +224,11 @@ public class FieldsViewController implements Initializable {
 
         textArea.textProperty().bindBidirectional(descriptionProperty);
         String defaultEntryTemplate = "# System: \n\n# Problem Description\n\n# Observation\n\n# Action Taken/Requested\n\n# Required Followup\n\n";
-        descriptionProperty.set(logEntry.getDescription() != null ? logEntry.getDescription() : defaultEntryTemplate);
-
+        if (this.replyTo == null) {
+            descriptionProperty.set(logEntry.getDescription() != null ? logEntry.getDescription() : defaultEntryTemplate);
+        } else {
+            descriptionProperty.set(logEntry.getDescription() != null ? logEntry.getDescription() : "");
+        }
         Image tagIcon = ImageCache.getImage(FieldsViewController.class, "/icons/add_tag.png");
         Image logbookIcon = ImageCache.getImage(FieldsViewController.class, "/icons/logbook-16.png");
         Image downIcon = ImageCache.getImage(FieldsViewController.class, "/icons/down_triangle.png");
