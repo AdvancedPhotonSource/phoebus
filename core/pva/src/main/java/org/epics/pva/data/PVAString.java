@@ -15,8 +15,9 @@ import java.util.Objects;
  *   @author Kay Kasemir
  */
 @SuppressWarnings("nls")
-public class PVAString extends PVAData
+public class PVAString extends PVAData implements PVAValue
 {
+    /** Type descriptor */
     public static final byte FIELD_DESC_TYPE = (byte)0b01100000;
 
     /** @param string Text
@@ -74,11 +75,15 @@ public class PVAString extends PVAData
 
     private volatile String value;
 
+    /** @param name Name for data item */
     public PVAString(final String name)
     {
         this(name, null);
     }
 
+    /** @param name Name for data item
+     *  @param value Initial value
+     */
     public PVAString(final String name, final String value)
     {
         super(name);
@@ -152,10 +157,9 @@ public class PVAString extends PVAData
     }
 
     @Override
-    protected void formatType(final int level, final StringBuilder buffer)
+    public String getType()
     {
-        indent(level, buffer);
-        buffer.append("string ").append(name);
+        return "string";
     }
 
     @Override
@@ -163,6 +167,11 @@ public class PVAString extends PVAData
     {
         formatType(level, buffer);
         buffer.append(" ").append(value);
+    }
+
+    @Override
+    public String formatValue() {
+        return get();
     }
 
     @Override

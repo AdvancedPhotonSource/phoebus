@@ -1,32 +1,18 @@
 package org.phoebus.ui.application;
 
-import javafx.application.Application;
-import javafx.application.Platform;
-import javafx.event.ActionEvent;
-import javafx.scene.Node;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Alert.AlertType;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.CheckMenuItem;
-import javafx.scene.control.Dialog;
-import javafx.scene.control.Menu;
-import javafx.scene.control.MenuBar;
-import javafx.scene.control.MenuButton;
-import javafx.scene.control.MenuItem;
-import javafx.scene.control.SeparatorMenuItem;
-import javafx.scene.control.ToolBar;
-import javafx.scene.control.Tooltip;
-import javafx.scene.image.Image;
-import javafx.scene.image.ImageView;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyCodeCombination;
-import javafx.scene.input.KeyCombination;
-import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.VBox;
-import javafx.stage.Stage;
-import javafx.stage.Window;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.lang.ref.WeakReference;
+import java.net.URI;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
 import org.phoebus.framework.jobs.JobManager;
 import org.phoebus.framework.jobs.JobMonitor;
 import org.phoebus.framework.jobs.SubJobMonitor;
@@ -59,25 +45,32 @@ import org.phoebus.ui.spi.MenuEntry;
 import org.phoebus.ui.statusbar.StatusBar;
 import org.phoebus.ui.welcome.Welcome;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.lang.ref.WeakReference;
-import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.stream.Collectors;
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.scene.Node;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckMenuItem;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuBar;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.ToolBar;
+import javafx.scene.control.Tooltip;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
+import javafx.stage.Window;
 
 /**
  * Primary UI for a phoebus application
@@ -102,7 +95,7 @@ public class PhoebusApplication extends Application {
      * <p>Set on {@link #start(Stage)},
      * may be used to for example get HostServices
      */
-    public static Application INSTANCE;
+    public static PhoebusApplication INSTANCE;
 
     /**
      * Application parameters
@@ -164,7 +157,7 @@ public class PhoebusApplication extends Application {
     /**
      * Menu item to save layout
      */
-    private SaveLayoutMenuItem save_layout;
+    private MenuItem save_layout;
 
     /**
      * Menu item to delete layouts
@@ -177,13 +170,18 @@ public class PhoebusApplication extends Application {
     private final Menu load_layout = new Menu(Messages.LoadLayout, ImageCache.getImageView(ImageCache.class, "/icons/layouts.png"));
 
     /**
+     * Menu to add a layout to the current layout
+     */
+    private final Menu add_layout = new Menu(Messages.AddLayout, ImageCache.getImageView(ImageCache.class, "/icons/layouts.png"));
+    
+    /**
      * List of memento names
      *
      * <p>This list contains the basic layout name,
      * without the ".memento" suffix and without the 'user'
      * location path.
      */
-    private final List<String> memento_files = new CopyOnWriteArrayList<>();
+    public final List<String> memento_files = new CopyOnWriteArrayList<>();
 
     /**
      * Toolbar button for top resources
@@ -206,6 +204,12 @@ public class PhoebusApplication extends Application {
      */
     private File last_opened_file = null;
 
+    /** Show the 'Welcome' tab?
+     *  Suppressed on -clean, specific -layout,
+     *  or when restored state has content.
+     */
+    private boolean show_welcome = true;
+
     /**
      * Application last picked when prompted for app to use
      */
@@ -219,7 +223,9 @@ public class PhoebusApplication extends Application {
 
     private static final WeakReference<DockItemWithInput> NO_ACTIVE_ITEM_WITH_INPUT = new WeakReference<>(null);
 
-    public static KeyCombination closeAllTabsKeyCombination;
+    public static KeyCombination closeAllTabsKeyCombination = PlatformInfo.is_mac_os_x ?
+        new KeyCodeCombination(KeyCode.W, KeyCombination.SHIFT_DOWN, KeyCodeCombination.SHORTCUT_DOWN) :
+        new KeyCodeCombination(KeyCode.F4, KeyCombination.SHIFT_DOWN, KeyCombination.CONTROL_DOWN);
 
 
     /**
@@ -341,7 +347,9 @@ public class PhoebusApplication extends Application {
         // If there's nothing to restore from a previous instance,
         // start with welcome
         monitor.updateTaskName(Messages.MonitorTaskTabs);
-        if (!application_parameters.contains("-clean") && !restoreState(memento))
+        if (application_parameters.contains("-clean") || restoreState(memento))
+            show_welcome = false;
+        if (show_welcome)
             new Welcome().create();
         monitor.worked(1);
 
@@ -387,13 +395,6 @@ public class PhoebusApplication extends Application {
             freezeup_check = new ResponsivenessMonitor(3 * Preferences.ui_monitor_period,
                     Preferences.ui_monitor_period, TimeUnit.MILLISECONDS);
 
-        if(PlatformInfo.is_mac_os_x){
-            closeAllTabsKeyCombination = new KeyCodeCombination(KeyCode.W, KeyCombination.SHIFT_DOWN, KeyCodeCombination.SHORTCUT_DOWN);
-        }
-        else{
-            closeAllTabsKeyCombination = new KeyCodeCombination(KeyCode.F4, KeyCombination.SHIFT_DOWN, KeyCombination.CONTROL_DOWN);
-        }
-
         closeAllTabsMenuItem.acceleratorProperty().setValue(closeAllTabsKeyCombination);
 
     }
@@ -418,7 +419,8 @@ public class PhoebusApplication extends Application {
      * @throws Exception on error
      */
     private void handleParameters(final List<String> parameters) throws Exception {
-        if(parameters.contains("-clean")){
+        if (parameters.contains("-clean"))
+        {   // Clean removes everything, including 'Welcome'
             return;
         }
         // List of applications to launch as specified via cmd line args
@@ -523,8 +525,10 @@ public class PhoebusApplication extends Application {
         show_statusbar = new CheckMenuItem(Messages.ShowStatusbar);
         show_statusbar.setOnAction(event -> showStatusbar(show_statusbar.isSelected()));
 
-        save_layout = new SaveLayoutMenuItem(this, memento_files);
-        delete_layouts = new DeleteLayoutsMenuItem(this, memento_files);
+        save_layout = new MenuItem(Messages.SaveLayoutAs, ImageCache.getImageView(getClass(), "/icons/new_layout.png"));
+        save_layout.setOnAction(event -> SaveLayoutHelper.saveLayout(DockStage.getDockStages(), Messages.SaveLayoutAs));
+
+        delete_layouts = new DeleteLayoutsMenuItem();
 
         final Menu menu = new Menu(Messages.Window, null,
                 show_tabs,
@@ -536,19 +540,12 @@ public class PhoebusApplication extends Application {
                 new SeparatorMenuItem(),
                 save_layout,
                 load_layout,
+                add_layout,
                 delete_layouts,
                 new SeparatorMenuItem(),
                 /* Full Screen placeholder */
                 new FullScreenAction(stage));
-        // Update Full screen action when shown to get correct enter/exit FS mode
-        menu.setOnShowing(event ->
-        {   // Last menu item
-            final int full_screen_index = menu.getItems().size() - 1;
-            final FullScreenAction full_screen = new FullScreenAction(stage);
-            if (!AuthorizationService.hasAuthorization("full_screen"))
-                full_screen.setDisable(true);
-            menu.getItems().set(full_screen_index, full_screen);
-        });
+
         menuBar.getMenus().add(menu);
 
         // Help
@@ -571,6 +568,13 @@ public class PhoebusApplication extends Application {
             menuItems.sort(Comparator.comparing(MenuItem::getText));
             selectTabMenu.getItems().clear();
             selectTabMenu.getItems().addAll(menuItems);
+
+            // Update Full screen action when shown to get correct enter/exit FS mode
+            final int full_screen_index = menu.getItems().size() - 1;
+            final FullScreenAction full_screen = new FullScreenAction(stage);
+            if (!AuthorizationService.hasAuthorization("full_screen"))
+                full_screen.setDisable(true);
+            menu.getItems().set(full_screen_index, full_screen);
         });
 
         closeAllTabsMenuItem.setOnAction(ae -> closeAllTabs());
@@ -589,6 +593,7 @@ public class PhoebusApplication extends Application {
 
             final List<MenuItem> menuItemList = new ArrayList<>();
             final List<MenuItem> toolbarMenuItemList = new ArrayList<>();
+            final List<MenuItem> addLayoutMenuItemList = new ArrayList<>();
 
             final Map<String, File> layoutFiles = new HashMap<String, File>();
 
@@ -643,6 +648,12 @@ public class PhoebusApplication extends Application {
                                 toolbarMenuItem.setMnemonicParsing(false);
                                 toolbarMenuItem.setOnAction(event -> startLayoutReplacement(file));
                                 toolbarMenuItemList.add(toolbarMenuItem);
+
+                                // Create menu for adding a layout:
+                                final MenuItem addLayoutMenuItem = new MenuItem(filename);
+                                addLayoutMenuItem.setMnemonicParsing(false);
+                                addLayoutMenuItem.setOnAction(event -> startAddingLayout(file));
+                                addLayoutMenuItemList.add(addLayoutMenuItem);
                             }
                         });
             }
@@ -651,6 +662,7 @@ public class PhoebusApplication extends Application {
             Platform.runLater(() ->
             {
                 load_layout.getItems().setAll(menuItemList);
+                add_layout.getItems().setAll(addLayoutMenuItemList);
                 layout_menu_button.getItems().setAll(toolbarMenuItemList);
                 delete_layouts.setDisable(memento_files.isEmpty());
             });
@@ -962,7 +974,7 @@ public class PhoebusApplication extends Application {
                 if (end < 0)
                     end = query.length();
                 final String target = query.substring(i + 7, end);
-                if (!target.equals("window")) {
+                if (!target.startsWith("window")) {
                     // Should the new panel open in a specific, named pane?
                     final DockPane existing = DockStage.getDockPaneByName(target);
                     if (existing != null)
@@ -1005,6 +1017,28 @@ public class PhoebusApplication extends Application {
 
             // On success, switch layout on UI thread
             Platform.runLater(() -> replaceLayout(memento));
+        });
+    }
+
+    /**
+     * Initiate adding a layout to the current layout
+     *
+     * @param mementoFile Memento for the desired layout
+     */
+    private void startAddingLayout(File mementoFile) {
+        JobManager.schedule(mementoFile.getName(), monitor ->
+        {
+            MementoTree mementoTree;
+            try {
+                mementoTree = loadMemento(mementoFile);
+            } catch (FileNotFoundException fileNotFoundException) {
+                logger.log(Level.SEVERE, "Unable to add a layout to the existing layout due to an error when opening the file '" + mementoFile.getAbsolutePath() + "'.");
+                return;
+            } catch (Exception exception) {
+                logger.log(Level.SEVERE, "Unable to add a layout to the existing layout due to an error when parsing the file '" + mementoFile.getAbsolutePath() + "'.");
+                return;
+            }
+            Platform.runLater(() -> addLayoutToCurrentLayout(mementoTree));
         });
     }
 
@@ -1061,6 +1095,8 @@ public class PhoebusApplication extends Application {
                 if ("-layout".equals(parameters.get(i))) {
                     if (i >= parameters.size() - 1)
                         throw new Exception("Missing /path/to/Example.memento for -layout option");
+                    // Restoring a specific layout, even if empty, disables the 'Welcome' tab
+                    show_welcome = false;
                     memfile = new File(parameters.get(i + 1));
                     // Remove -layout and path because they have been handled
                     parameters.remove(i + 1);
@@ -1089,6 +1125,41 @@ public class PhoebusApplication extends Application {
      */
     private MementoTree loadMemento(final File memfile) throws Exception {
         return XMLMementoTree.read(new FileInputStream(memfile));
+    }
+
+    /**
+     * Adds a layout from a MementoTree to the current layout.
+     */
+    private void addLayoutToCurrentLayout(MementoTree mementoTree) {
+
+        List<Runnable> restoreSelectedTabFunctions = new LinkedList<>();
+        for (Stage stage : DockStage.getDockStages()) {
+            for (DockPane pane : DockStage.getDockPanes(stage)) {
+                DockItem tab = (DockItem) pane.getSelectionModel().getSelectedItem();
+                restoreSelectedTabFunctions.add(() -> tab.select());
+            }
+        }
+
+        List<Runnable> focusNewlyCreatedStageFunctions = new LinkedList<>();
+        for (MementoTree childMementoTree : mementoTree.getChildren()) {
+            Stage stage = new Stage();
+            DockStage.configureStage(stage);
+            MementoHelper.restoreStage(childMementoTree, stage);
+
+            DockStage.deferUntilAllPanesOfStageHaveScenes(stage, () ->
+            {
+                long numberOfRestoredTabsInStage = DockStage.getDockPanes(stage).stream()
+                                                            .flatMap(pane -> pane.getTabs().stream())
+                                                            .count();
+                if (numberOfRestoredTabsInStage > 0) {
+                    focusNewlyCreatedStageFunctions.add(() -> stage.requestFocus());
+                } else {
+                    stage.close();
+                }
+                restoreSelectedTabFunctions.forEach(f -> f.run());
+                focusNewlyCreatedStageFunctions.forEach(f -> f.run());
+            });
+        }
     }
 
     /**
@@ -1182,7 +1253,7 @@ public class PhoebusApplication extends Application {
         // Save current state, _before_ tabs are closed and thus
         // there's nothing left to save
         final File memfile = XMLMementoTree.getDefaultFile();
-        MementoHelper.saveState(memfile, last_opened_file, default_application, isMenuVisible(), isToolbarVisible(), isStatusbarVisible());
+        MementoHelper.saveState(DockStage.getDockStages(), memfile, last_opened_file, default_application, isMenuVisible(), isToolbarVisible(), isStatusbarVisible());
 
         // TODO Necessary to close main_stage last?
         if (stages.contains(main_stage)) {

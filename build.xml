@@ -30,6 +30,7 @@
     <ant target="clean" dir="app/pvtable"/>
     <ant target="clean" dir="app/rtplot"/>
     <ant target="clean" dir="app/databrowser"/>
+    <ant target="clean" dir="app/databrowser-timescale"/>
     <ant target="clean" dir="app/trends/rich-adapters"/>
     <ant target="clean" dir="app/trends/simple-adapters"/>
     <ant target="clean" dir="app/3d-viewer"/>
@@ -44,6 +45,7 @@
     <ant target="clean" dir="app/display/convert-medm"/>
     <ant target="clean" dir="app/display/convert-edm"/>
     <ant target="clean" dir="app/display/adapters"/>
+    <ant target="clean" dir="app/display/thumbwheel"/>
     <ant target="clean" dir="app/scan/model"/>
     <ant target="clean" dir="app/scan/client"/>
     <ant target="clean" dir="app/scan/ui"/>
@@ -107,6 +109,7 @@
     <ant dir="app/pvtable"/>
     <ant dir="app/rtplot"/>
     <ant dir="app/databrowser"/>
+    <ant dir="app/databrowser-timescale"/>
     <ant dir="app/trends/rich-adapters"/>
     <ant dir="app/trends/simple-adapters"/>
     <ant dir="app/3d-viewer"/>
@@ -121,6 +124,7 @@
     <ant dir="app/display/convert-medm"/>
     <ant dir="app/display/convert-edm"/>
     <ant dir="app/display/adapters"/>
+    <ant dir="app/display/thumbwheel"/>
     <ant dir="app/scan/model"/>
     <ant dir="app/scan/client"/>
     <ant dir="app/scan/ui"/>

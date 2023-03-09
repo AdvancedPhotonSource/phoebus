@@ -15,11 +15,15 @@ import org.phoebus.logbook.Property;
 import org.phoebus.logbook.PropertyImpl;
 import org.phoebus.logbook.olog.ui.write.LogEntryEditorStage;
 import org.phoebus.logbook.olog.ui.write.LogPropertiesEditorController;
-import org.phoebus.olog.es.api.OlogClient;
 import org.phoebus.ui.javafx.ApplicationWrapper;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.ResourceBundle;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 

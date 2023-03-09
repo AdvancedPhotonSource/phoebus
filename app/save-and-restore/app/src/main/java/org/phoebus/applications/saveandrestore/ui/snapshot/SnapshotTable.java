@@ -31,8 +31,6 @@ import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextAlignment;
@@ -46,16 +44,17 @@ import org.epics.vtype.VNumberArray;
 import org.epics.vtype.VType;
 import org.phoebus.applications.saveandrestore.Messages;
 import org.phoebus.applications.saveandrestore.SaveAndRestoreApplication;
-import org.phoebus.applications.saveandrestore.Utilities;
+import org.phoebus.applications.saveandrestore.common.Utilities;
+import org.phoebus.applications.saveandrestore.common.VDisconnectedData;
+import org.phoebus.applications.saveandrestore.common.VNoData;
+import org.phoebus.applications.saveandrestore.common.VTypePair;
 import org.phoebus.applications.saveandrestore.model.ConfigPv;
+import org.phoebus.applications.saveandrestore.model.Snapshot;
 import org.phoebus.applications.saveandrestore.ui.MultitypeTableCell;
-import org.phoebus.applications.saveandrestore.ui.model.VDisconnectedData;
-import org.phoebus.applications.saveandrestore.ui.model.VNoData;
-import org.phoebus.applications.saveandrestore.ui.model.VSnapshot;
-import org.phoebus.applications.saveandrestore.ui.model.VTypePair;
-import org.phoebus.core.types.ProcessVariable;
+import org.phoebus.core.types.TimeStampedProcessVariable;
 import org.phoebus.framework.selection.SelectionService;
 import org.phoebus.ui.application.ContextMenuHelper;
+import org.phoebus.util.time.TimestampFormats;
 
 import java.lang.reflect.Field;
 import java.security.AccessController;
@@ -66,13 +65,10 @@ import java.util.Formatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
-
 class SnapshotTable extends TableView<TableEntry> {
 
-    private TableColumn<TableEntry, ConfigPv> pvNameColumn;
-
-    private static boolean resizePolicyNotInitialized = true;
-    private static PrivilegedAction<Object> resizePolicyAction = () -> {
+    protected static boolean resizePolicyNotInitialized = true;
+    protected static PrivilegedAction<Object> resizePolicyAction = () -> {
         try {
             // Java FX bugfix: the table columns are not properly resized for the first table
             Field f = TableView.CONSTRAINED_RESIZE_POLICY.getClass().getDeclaredField("isFirstRun");
@@ -91,7 +87,6 @@ class SnapshotTable extends TableView<TableEntry> {
      * <code>TimestampTableCell</code> is a table cell for rendering the {@link Instant} objects in the table.
      *
      * @author <a href="mailto:jaka.bobnar@cosylab.com">Jaka Bobnar</a>
-     *
      */
     private static class TimestampTableCell extends TableCell<TableEntry, Instant> {
         @Override
@@ -104,20 +99,19 @@ class SnapshotTable extends TableView<TableEntry> {
                 setText("---");
                 setStyle("");
             } else {
-                setText(Utilities.timestampToLittleEndianString(item, true));
+                setText(TimestampFormats.SECONDS_FORMAT.format((item)));
             }
         }
     }
 
     /**
-     * <code>VTypeCellEditor</code> is an editor type for {@link org.epics.vtype.VType} or {@link org.phoebus.applications.saveandrestore.ui.model.VTypePair}, which allows editing the
+     * <code>VTypeCellEditor</code> is an editor type for {@link org.epics.vtype.VType} or {@link VTypePair}, which allows editing the
      * value as a string.
      *
+     * @param <T> {@link org.epics.vtype.VType} or {@link VTypePair}
      * @author <a href="mailto:jaka.bobnar@cosylab.com">Jaka Bobnar</a>
-     *
-     * @param <T> {@link org.epics.vtype.VType} or {@link org.phoebus.applications.saveandrestore.ui.model.VTypePair}
      */
-    private static class VTypeCellEditor<T> extends MultitypeTableCell<TableEntry, T> {
+    protected static class VTypeCellEditor<T> extends MultitypeTableCell<TableEntry, T> {
         private static final Image DISCONNECTED_IMAGE = new Image(
                 SnapshotController.class.getResourceAsStream("/icons/showerr_tsk.png"));
         private final Tooltip tooltip = new Tooltip();
@@ -135,8 +129,7 @@ class SnapshotTable extends TableView<TableEntry> {
                         return ((VNumberArray) item).getData().toString();
                     } else if (item instanceof VEnum) {
                         return ((VEnum) item).getValue();
-                    }
-                    else if (item instanceof VTypePair) {
+                    } else if (item instanceof VTypePair) {
                         VType value = ((VTypePair) item).value;
                         if (value instanceof VNumber) {
                             return ((VNumber) value).getValue().toString();
@@ -144,8 +137,7 @@ class SnapshotTable extends TableView<TableEntry> {
                             return ((VNumberArray) value).getData().toString();
                         } else if (value instanceof VEnum) {
                             return ((VEnum) value).getValue();
-                        }
-                        else {
+                        } else {
                             return value.toString();
                         }
                     } else {
@@ -166,10 +158,10 @@ class SnapshotTable extends TableView<TableEntry> {
                             VTypePair t = (VTypePair) item;
                             if (t.value instanceof VDisconnectedData) {
                                 return (T) new VTypePair(t.base, Utilities.valueFromString(string, t.base),
-                                    t.threshold);
+                                        t.threshold);
                             } else {
                                 return (T) new VTypePair(t.base, Utilities.valueFromString(string, t.value),
-                                    t.threshold);
+                                        t.threshold);
                             }
                         } else {
                             return item;
@@ -276,11 +268,11 @@ class SnapshotTable extends TableView<TableEntry> {
     /**
      * A dedicated CellEditor for displaying delta only.
      * TODO can be simplified further
-     * @author Kunal Shroff
      *
      * @param <T>
+     * @author Kunal Shroff
      */
-    private static class VDeltaCellEditor<T> extends VTypeCellEditor<T> {
+    protected static class VDeltaCellEditor<T> extends VTypeCellEditor<T> {
 
         private static final Image WARNING_IMAGE = new Image(
                 SnapshotController.class.getResourceAsStream("/icons/hprio_tsk.png"));
@@ -289,7 +281,10 @@ class SnapshotTable extends TableView<TableEntry> {
         private final Tooltip tooltip = new Tooltip();
 
         private boolean showDeltaPercentage = false;
-        private void setShowDeltaPercentage() { showDeltaPercentage = true; }
+
+        protected void setShowDeltaPercentage() {
+            showDeltaPercentage = true;
+        }
 
         VDeltaCellEditor() {
             super();
@@ -349,11 +344,10 @@ class SnapshotTable extends TableView<TableEntry> {
     /**
      * <code>TooltipTableColumn</code> is the common table column implementation, which can also provide the tooltip.
      *
-     * @author <a href="mailto:jaka.bobnar@cosylab.com">Jaka Bobnar</a>
-     *
      * @param <T> the type of the values displayed by this column
+     * @author <a href="mailto:jaka.bobnar@cosylab.com">Jaka Bobnar</a>
      */
-    private class TooltipTableColumn<T> extends TableColumn<TableEntry, T> {
+    protected static class TooltipTableColumn<T> extends TableColumn<TableEntry, T> {
         private String text;
         private Label label;
 
@@ -397,66 +391,11 @@ class SnapshotTable extends TableView<TableEntry> {
         }
     }
 
-    /**
-     * <code>SelectionTableColumn</code> is the table column for the first column in the table, which displays
-     * a checkbox, whether the PV should be selected or not.
-     *
-     * @author <a href="mailto:jaka.bobnar@cosylab.com">Jaka Bobnar</a>
-     *
-     */
-    private class SelectionTableColumn extends TooltipTableColumn<Boolean> {
-        SelectionTableColumn() {
-            super("", "Include this PV when restoring values", 30, 30, false);
-            setCellValueFactory(new PropertyValueFactory<>("selected"));
-            //for those entries, which have a read-only property, disable the checkbox
-            setCellFactory(column -> {
-                TableCell<TableEntry, Boolean> cell = new CheckBoxTableCell<>(null,null);
-                // initialize the checkbox
-                UpdateCheckboxState(cell);
-                cell.itemProperty().addListener((a, o, n) -> {
-                    UpdateCheckboxState(cell);
-                });
-                return cell;
-            });
-            setEditable(true);
-            setSortable(false);
-            selectAllCheckBox = new CheckBox();
-            selectAllCheckBox.setSelected(false);
-            selectAllCheckBox.setOnAction(e -> getItems().stream().filter(te -> !te.readOnlyProperty().get())
-                    .forEach(te -> te.selectedProperty().setValue(selectAllCheckBox.isSelected())));
-            setGraphic(selectAllCheckBox);
-            MenuItem inverseMI = new MenuItem("Inverse Selection");
-            inverseMI.setOnAction(e -> getItems().stream().filter(te -> !te.readOnlyProperty().get())
-                    .forEach(te -> te.selectedProperty().setValue(!te.selectedProperty().get())));
-            final ContextMenu contextMenu = new ContextMenu(inverseMI);
-            selectAllCheckBox.setOnMouseReleased(e -> {
-                if (e.getButton() == MouseButton.SECONDARY) {
-                    contextMenu.show(selectAllCheckBox, e.getScreenX(), e.getScreenY());
-                }
-            });
-        }
-
-        private void UpdateCheckboxState(TableCell<TableEntry, Boolean> cell) {
-            cell.getStyleClass().remove("check-box-table-cell-disabled");
-
-            TableRow<?> row = cell.getTableRow();
-            if (row != null) {
-                TableEntry item = (TableEntry) row.getItem();
-                if (item != null) {
-                    cell.setEditable(!item.readOnlyProperty().get());
-                    if (item.readOnlyProperty().get()) {
-                        cell.getStyleClass().add("check-box-table-cell-disabled");
-                    }
-                }
-            }
-        }
-    }
-
-    private final List<VSnapshot> uiSnapshots = new ArrayList<>();
-    private boolean showStoredReadbacks;
+    private final List<Snapshot> uiSnapshots = new ArrayList<>();
     private boolean showReadbacks;
     private boolean showDeltaPercentage;
     private final SnapshotController controller;
+
     private CheckBox selectAllCheckBox;
 
     private TableColumn<TableEntry, ?> columnAtMouse;
@@ -477,8 +416,6 @@ class SnapshotTable extends TableView<TableEntry> {
         setEditable(true);
         getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         setMaxWidth(Double.MAX_VALUE);
-        setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(this, Priority.ALWAYS);
         setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         getStylesheets().add(SnapshotTable.class.getResource("/style.css").toExternalForm());
 
@@ -541,8 +478,14 @@ class SnapshotTable extends TableView<TableEntry> {
                     setOnContextMenuRequested(null);
                 } else {
                     setOnContextMenuRequested(event -> {
-                        List<ProcessVariable> selectedPVList = getSelectionModel().getSelectedItems().stream()
-                                .map(tableEntry -> new ProcessVariable(tableEntry.pvNameProperty().get()))
+                        List<TimeStampedProcessVariable> selectedPVList = getSelectionModel().getSelectedItems().stream()
+                                .map(tableEntry -> {
+                                    Instant time = Instant.now();
+                                    if (tableEntry.timestampProperty().getValue() != null) {
+                                        time = tableEntry.timestampProperty().getValue();
+                                    }
+                                    return new TimeStampedProcessVariable(tableEntry.pvNameProperty().get(), time);
+                                })
                                 .collect(Collectors.toList());
 
                         contextMenu.hide();
@@ -559,7 +502,6 @@ class SnapshotTable extends TableView<TableEntry> {
                         toggle.setOnAction(actionEvent -> {
                             item.readOnlyProperty().setValue(!item.readOnlyProperty().get());
                             item.selectedProperty().set(!item.readOnlyProperty().get());
-                            item.readonlyOverrideProperty().set(!item.readonlyOverrideProperty().get());
                         });
                         contextMenu.getItems().add(toggle);
                         contextMenu.show(this, event.getScreenX(), event.getScreenY());
@@ -573,7 +515,7 @@ class SnapshotTable extends TableView<TableEntry> {
      * Set the column and row number at current mouse position.
      *
      * @param column the column at mouse cursor (null if none)
-     * @param row the row index at mouse cursor
+     * @param row    the row index at mouse cursor
      */
     private void setColumnAndRowAtMouse(TableColumn<TableEntry, ?> column, int row) {
         this.columnAtMouse = column;
@@ -597,16 +539,15 @@ class SnapshotTable extends TableView<TableEntry> {
 
         int width = measureStringWidth("000", Font.font(20));
         TableColumn<TableEntry, Integer> idColumn = new TooltipTableColumn<>("#",
-            Messages.toolTipTableColumIndex, width, width, false);
+                Messages.toolTipTableColumIndex, width, width, false);
         idColumn.setCellValueFactory(cell -> {
             int idValue = cell.getValue().idProperty().get();
             idColumn.setPrefWidth(Math.max(idColumn.getWidth(), measureStringWidth(String.valueOf(idValue), Font.font(20))));
-
             return new ReadOnlyObjectWrapper(idValue);
         });
         snapshotTableEntries.add(idColumn);
 
-        pvNameColumn = new TooltipTableColumn<>("PV Name",
+        TableColumn<TableEntry, ConfigPv> pvNameColumn = new TooltipTableColumn<>("PV Name",
                 Messages.toolTipTableColumnPVName, 100);
 
         pvNameColumn.setCellValueFactory(new PropertyValueFactory<>("pvName"));
@@ -621,14 +562,15 @@ class SnapshotTable extends TableView<TableEntry> {
 
         width = measureStringWidth("MM:MM:MM.MMM MMM MM M", null);
         TableColumn<TableEntry, Instant> timestampColumn = new TooltipTableColumn<>("Timestamp",
-            Messages.toolTipTableColumnTimestamp, width, width, true);
-        timestampColumn.setCellValueFactory(new PropertyValueFactory<TableEntry, Instant>("timestamp"));
+                Messages.toolTipTableColumnTimestamp, width, width, true);
+        timestampColumn.setCellValueFactory(new PropertyValueFactory<>("timestamp"));
         timestampColumn.setCellFactory(c -> new TimestampTableCell());
+        timestampColumn.getStyleClass().add("timestamp-column");
         timestampColumn.setPrefWidth(width);
         snapshotTableEntries.add(timestampColumn);
 
         TableColumn<TableEntry, String> statusColumn = new TooltipTableColumn<>("Status",
-            Messages.toolTipTableColumnAlarmStatus, 100, 100, true);
+                Messages.toolTipTableColumnAlarmStatus, 100, 100, true);
         statusColumn.setCellValueFactory(new PropertyValueFactory<>("status"));
         snapshotTableEntries.add(statusColumn);
 
@@ -641,8 +583,8 @@ class SnapshotTable extends TableView<TableEntry> {
                 "Stored Setpoint", "", -1);
 
         TableColumn<TableEntry, VType> storedValueColumn = new TooltipTableColumn<>(
-            "Stored Setpoint",
-            Messages.toolTipTableColumnSetpointPVValue, 100);
+                "Stored Setpoint",
+                Messages.toolTipTableColumnSetpointPVValue, 100);
         storedValueColumn.setCellValueFactory(new PropertyValueFactory<>("snapshotVal"));
         storedValueColumn.setCellFactory(e -> new VTypeCellEditor<>());
         storedValueColumn.setEditable(true);
@@ -651,7 +593,7 @@ class SnapshotTable extends TableView<TableEntry> {
 
             ObjectProperty<VTypePair> value = e.getRowValue().valueProperty();
             value.setValue(new VTypePair(value.get().base, updatedValue, value.get().threshold));
-            controller.updateSnapshot(0, e.getRowValue(), updatedValue);
+            controller.updateLoadedSnapshot(0, e.getRowValue(), updatedValue);
         });
 
         storedValueBaseColumn.getColumns().add(storedValueColumn);
@@ -692,7 +634,7 @@ class SnapshotTable extends TableView<TableEntry> {
         }
 
         TableColumn<TableEntry, VType> liveValueColumn = new TooltipTableColumn<>("Live Setpoint", "Current PV Value",
-            100);
+                100);
         liveValueColumn.setCellValueFactory(new PropertyValueFactory<>("liveValue"));
         liveValueColumn.setCellFactory(e -> new VTypeCellEditor<>());
         liveValueColumn.setEditable(false);
@@ -711,14 +653,169 @@ class SnapshotTable extends TableView<TableEntry> {
         getColumns().addAll(snapshotTableEntries);
     }
 
-    private void createTableForMultipleSnapshots(List<VSnapshot> snapshots) {
+    /**
+     * Updates the table by setting new content, including the structure. The table is always recreated, even if the new
+     * structure is identical to the old one. This is slightly more expensive; however, this method is only invoked per
+     * user request (button click).
+     *
+     * @param entries             the table entries (rows) to set on the table
+     * @param snapshots           the snapshots which are currently displayed
+     * @param showLiveReadback    true if readback column should be visible or false otherwise
+     * @param showStoredReadback  true if the stored readback value columns should be visible or false otherwise
+     * @param showDeltaPercentage true if delta percentage should be be visible or false otherwise
+     */
+    public void updateTable(List<TableEntry> entries, List<Snapshot> snapshots, boolean showLiveReadback, boolean showStoredReadback, boolean showDeltaPercentage) {
+        getColumns().clear();
+        uiSnapshots.clear();
+        // we should always know if we are showing the stored readback or not, to properly extract the selection
+        this.showReadbacks = showLiveReadback;
+        this.showDeltaPercentage = showDeltaPercentage;
+        uiSnapshots.addAll(snapshots);
+        if(snapshots.size() == 1){
+            createTableForSingleSnapshot(showLiveReadback, showStoredReadback);
+        }
+        else{
+            createTableForMultipleSnapshots(snapshots);
+        }
+        updateTableColumnTitles();
+        updateTable(entries);
+    }
+
+    /**
+     * Sets new table entries for this table, but do not change the structure of the table.
+     *
+     * @param entries the entries to set
+     */
+    public void updateTable(List<TableEntry> entries) {
+        final ObservableList<TableEntry> items = getItems();
+        final boolean notHide = !controller.isHideEqualItems();
+        items.clear();
+        entries.forEach(e -> {
+            // there is no harm if this is executed more than once, because only one line is allowed for these
+            // two properties (see SingleListenerBooleanProperty for more details)
+            e.liveStoredEqualProperty().addListener((a, o, n) -> {
+                if (controller.isHideEqualItems()) {
+                    if (n) {
+                        getItems().remove(e);
+                    } else {
+                        getItems().add(e);
+                    }
+                }
+            });
+            if (notHide || !e.liveStoredEqualProperty().get()) {
+                items.add(e);
+            }
+        });
+    }
+
+    /**
+     * Update the table column titles, by putting an asterisk to non saved snapshots or remove asterisk from saved
+     * snapshots.
+     */
+    private void updateTableColumnTitles() {
+        // add the * to the title of the column if the snapshot is not saved
+        if (uiSnapshots.size() == 1) {
+            ((TooltipTableColumn<?>) getColumns().get(6)).setSaved(true);
+        } else {
+            TableColumn<TableEntry, ?> column = getColumns().get(4);
+            for (int i = 0; i < uiSnapshots.size(); i++) {
+                TableColumn tableColumn = column.getColumns().get(i);
+                if (tableColumn instanceof DividerTableColumn) {
+                    continue;
+                }
+                ((TooltipTableColumn<?>) tableColumn).setSaved(true);
+            }
+        }
+    }
+
+    /**
+     * SnapshotTable cell renderer styled to fit the {@link DividerTableColumn}
+     */
+    private class DividerCell extends TableCell {
+        @Override
+        protected void updateItem(final Object object, final boolean empty) {
+            super.updateItem(object, empty);
+            getStyleClass().add("divider");
+        }
+    }
+
+    /**
+     * A table column styled to act as a divider between other columns.
+     */
+    protected class DividerTableColumn extends TableColumn {
+
+        public DividerTableColumn() {
+            setPrefWidth(10);
+            setMinWidth(10);
+            setMaxWidth(50);
+            setCellFactory(c -> new DividerCell());
+        }
+    }
+
+    /**
+     * <code>SelectionTableColumn</code> is the table column for the first column in the table, which displays
+     * a checkbox, whether the PV should be selected or not.
+     *
+     * @author <a href="mailto:jaka.bobnar@cosylab.com">Jaka Bobnar</a>
+     */
+    private class SelectionTableColumn extends TooltipTableColumn<Boolean> {
+        SelectionTableColumn() {
+            super("", "Include this PV when restoring values", 30, 30, false);
+            setCellValueFactory(new PropertyValueFactory<>("selected"));
+            //for those entries, which have a read-only property, disable the checkbox
+            setCellFactory(column -> {
+                TableCell<TableEntry, Boolean> cell = new CheckBoxTableCell<>(null, null);
+                // initialize the checkbox
+                UpdateCheckboxState(cell);
+                cell.itemProperty().addListener((a, o, n) -> {
+                    UpdateCheckboxState(cell);
+                });
+                return cell;
+            });
+            setEditable(true);
+            setSortable(false);
+            selectAllCheckBox = new CheckBox();
+            selectAllCheckBox.setSelected(false);
+            selectAllCheckBox.setOnAction(e -> getItems().stream().filter(te -> !te.readOnlyProperty().get())
+                    .forEach(te -> te.selectedProperty().setValue(selectAllCheckBox.isSelected())));
+            setGraphic(selectAllCheckBox);
+            MenuItem inverseMI = new MenuItem("Inverse Selection");
+            inverseMI.setOnAction(e -> getItems().stream().filter(te -> !te.readOnlyProperty().get())
+                    .forEach(te -> te.selectedProperty().setValue(!te.selectedProperty().get())));
+            final ContextMenu contextMenu = new ContextMenu(inverseMI);
+            selectAllCheckBox.setOnMouseReleased(e -> {
+                if (e.getButton() == MouseButton.SECONDARY) {
+                    contextMenu.show(selectAllCheckBox, e.getScreenX(), e.getScreenY());
+                }
+            });
+        }
+
+        private void UpdateCheckboxState(TableCell<TableEntry, Boolean> cell) {
+            cell.getStyleClass().remove("check-box-table-cell-disabled");
+
+            TableRow<?> row = cell.getTableRow();
+            if (row != null) {
+                TableEntry item = (TableEntry) row.getItem();
+                if (item != null) {
+                    cell.setEditable(!item.readOnlyProperty().get());
+                    if (item.readOnlyProperty().get()) {
+                        cell.getStyleClass().add("check-box-table-cell-disabled");
+                    } else if (item.valueProperty().get().value.equals(VNoData.INSTANCE)) {
+                        item.selectedProperty().set(false);
+                    }
+                }
+            }
+        }
+    }
+
+    private void createTableForMultipleSnapshots(List<Snapshot> snapshots) {
         List<TableColumn<TableEntry, ?>> list = new ArrayList<>(7);
         TableColumn<TableEntry, Boolean> selectedColumn = new SelectionTableColumn();
         list.add(selectedColumn);
 
         int width = measureStringWidth("000", Font.font(20));
         TableColumn<TableEntry, Integer> idColumn = new TooltipTableColumn<>("#",
-            Messages.toolTipTableColumIndex, width, width, false);
+                Messages.toolTipTableColumIndex, width, width, false);
         idColumn.setCellValueFactory(cell -> {
             int idValue = cell.getValue().idProperty().get();
             idColumn.setPrefWidth(Math.max(idColumn.getWidth(), measureStringWidth(String.valueOf(idValue), Font.font(20))));
@@ -727,29 +824,30 @@ class SnapshotTable extends TableView<TableEntry> {
         });
         list.add(idColumn);
 
-        TableColumn<TableEntry, String> setpointPVName = new TooltipTableColumn<>("PV Name",
-            Messages.toolTipUnionOfSetpointPVNames, 100);
+        TableColumn<TableEntry, String> setpointPVName = new TooltipTableColumn<>(Messages.pvName,
+                Messages.toolTipUnionOfSetpointPVNames, 100);
         setpointPVName.setCellValueFactory(new PropertyValueFactory<>("pvName"));
         list.add(setpointPVName);
 
         list.add(new DividerTableColumn());
 
-        TableColumn<TableEntry, ?> storedValueColumn = new TooltipTableColumn<>("Stored Values",
-            Messages.toolTipTableColumnPVValues, -1);
+        TableColumn<TableEntry, ?> storedValueColumn = new TooltipTableColumn<>(Messages.storedValues,
+                Messages.toolTipTableColumnPVValues, -1);
         storedValueColumn.getStyleClass().add("toplevel");
 
-        String snapshotName = snapshots.get(0).getSnapshot().get().getName() + " (" +
-                String.valueOf(snapshots.get(0)) + ")";
-
+        String baseSnapshotTimeStamp = snapshots.get(0).getSnapshotNode().getCreated() == null ?
+                "" :
+                " (" + TimestampFormats.SECONDS_FORMAT.format(snapshots.get(0).getSnapshotNode().getCreated().toInstant()) + ")";
+        String snapshotName = snapshots.get(0).getSnapshotNode().getName() + baseSnapshotTimeStamp;
 
         TableColumn<TableEntry, ?> baseCol = new TooltipTableColumn<>(
-            snapshotName,
-            Messages.toolTipTableColumnSetpointPVValue, 33);
+                snapshotName,
+                Messages.toolTipTableColumnSetpointPVValue, 33);
         baseCol.getStyleClass().add("second-level");
 
         TableColumn<TableEntry, VType> storedBaseSetpointValueColumn = new TooltipTableColumn<>(
-            "Base Setpoint",
-            Messages.toolTipTableColumnBaseSetpointValue, 100);
+                Messages.baseSetpoint,
+                Messages.toolTipTableColumnBaseSetpointValue, 100);
 
         storedBaseSetpointValueColumn.setCellValueFactory(new PropertyValueFactory<>("snapshotVal"));
         storedBaseSetpointValueColumn.setCellFactory(e -> new VTypeCellEditor<>());
@@ -759,7 +857,7 @@ class SnapshotTable extends TableView<TableEntry> {
 
             ObjectProperty<VTypePair> value = e.getRowValue().valueProperty();
             value.setValue(new VTypePair(value.get().base, updatedValue, value.get().threshold));
-            controller.updateSnapshot(0, e.getRowValue(), updatedValue);
+            controller.updateLoadedSnapshot(0, e.getRowValue(), updatedValue);
 
             for (int i = 1; i < snapshots.size(); i++) {
                 ObjectProperty<VTypePair> compareValue = e.getRowValue().compareValueProperty(i);
@@ -803,8 +901,8 @@ class SnapshotTable extends TableView<TableEntry> {
         for (int i = 1; i < snapshots.size(); i++) {
             final int snapshotIndex = i;
 
-            snapshotName = snapshots.get(snapshotIndex).getSnapshot().get().getName() + " (" +
-                    String.valueOf(snapshots.get(snapshotIndex)) + ")";
+            snapshotName = snapshots.get(snapshotIndex).getSnapshotNode().getName() + " (" +
+                    TimestampFormats.SECONDS_FORMAT.format(snapshots.get(snapshotIndex).getSnapshotNode().getCreated().toInstant()) + ")";
 
 
             TooltipTableColumn<VTypePair> baseSnapshotCol = new TooltipTableColumn<>(snapshotName,
@@ -812,7 +910,7 @@ class SnapshotTable extends TableView<TableEntry> {
             baseSnapshotCol.getStyleClass().add("second-level");
 
             TooltipTableColumn<VTypePair> setpointValueCol = new TooltipTableColumn<>(
-                    "Setpoint",
+                    Messages.setpoint,
                     "Setpoint PV value when the " + snapshotName + " snapshot was taken", 66);
 
 
@@ -823,8 +921,8 @@ class SnapshotTable extends TableView<TableEntry> {
             baseSnapshotCol.getColumns().add(setpointValueCol);
 
             TooltipTableColumn<VTypePair> deltaCol = new TooltipTableColumn<>(
-                 Utilities.DELTA_CHAR + " Base Setpoint",
-                "Setpoint PVV value when the " + snapshotName + " snapshot was taken", 50);
+                    Utilities.DELTA_CHAR + Messages.baseSetpoint,
+                    "Setpoint PVV value when the " + snapshotName + " snapshot was taken", 50);
             deltaCol.setCellValueFactory(e -> e.getValue().compareValueProperty(snapshotIndex));
             deltaCol.setCellFactory(e -> {
                 VDeltaCellEditor vDeltaCellEditor = new VDeltaCellEditor<>();
@@ -853,8 +951,8 @@ class SnapshotTable extends TableView<TableEntry> {
         }
         list.add(storedValueColumn);
 
-        TableColumn<TableEntry, VType> liveValueColumn = new TooltipTableColumn<>("Live Setpoint",
-            "Current Setpoint value", 100);
+        TableColumn<TableEntry, VType> liveValueColumn = new TooltipTableColumn<>(Messages.liveSetpoint,
+                Messages.currentSetpointValue, 100);
 
         liveValueColumn.setCellValueFactory(new PropertyValueFactory<>("liveValue"));
         liveValueColumn.setCellFactory(e -> new VTypeCellEditor<>());
@@ -862,108 +960,5 @@ class SnapshotTable extends TableView<TableEntry> {
         list.add(liveValueColumn);
 
         getColumns().addAll(list);
-    }
-
-    /**
-     * Updates the table by setting new content, including the structure. The table is always recreated, even if the new
-     * structure is identical to the old one. This is slightly more expensive; however, this method is only invoked per
-     * user request (button click).
-     *
-     * @param entries the table entries (rows) to set on the table
-     * @param snapshots the snapshots which are currently displayed
-     * @param showLiveReadback true if readback column should be visible or false otherwise
-     * @param showStoredReadback true if the stored readback value columns should be visible or false otherwise
-     * @param showDeltaPercentage true if delta percentage should be be visible or false otherwise
-     */
-    public void updateTable(List<TableEntry> entries, List<VSnapshot> snapshots, boolean showLiveReadback, boolean showStoredReadback, boolean showDeltaPercentage) {
-        getColumns().clear();
-        uiSnapshots.clear();
-        // we should always know if we are showing the stored readback or not, to properly extract the selection
-        this.showStoredReadbacks = showStoredReadback;
-        this.showReadbacks = showLiveReadback;
-        this.showDeltaPercentage = showDeltaPercentage;
-        uiSnapshots.addAll(snapshots);
-        if (uiSnapshots.size() == 1) {
-            createTableForSingleSnapshot(showLiveReadback, showStoredReadback);
-        } else {
-            createTableForMultipleSnapshots(snapshots);
-        }
-        updateTableColumnTitles();
-        updateTable(entries);
-    }
-
-    /**
-     * Sets new table entries for this table, but do not change the structure of the table.
-     *
-     * @param entries the entries to set
-     */
-    public void updateTable(List<TableEntry> entries) {
-        final ObservableList<TableEntry> items = getItems();
-        final boolean notHide = !controller.isHideEqualItems();
-        items.clear();
-        entries.forEach(e -> {
-            // there is no harm if this is executed more than once, because only one line is allowed for these
-            // two properties (see SingleListenerBooleanProperty for more details)
-            e.selectedProperty()
-                .addListener((a, o, n) -> selectAllCheckBox.setSelected(n && selectAllCheckBox.isSelected()));
-            e.liveStoredEqualProperty().addListener((a, o, n) -> {
-                if (controller.isHideEqualItems()) {
-                    if (n) {
-                        getItems().remove(e);
-                    } else {
-                        getItems().add(e);
-                    }
-                }
-            });
-            if (notHide || !e.liveStoredEqualProperty().get()) {
-                items.add(e);
-            }
-        });
-    }
-
-    /**
-     * Update the table column titles, by putting an asterisk to non saved snapshots or remove asterisk from saved
-     * snapshots.
-     */
-    private void updateTableColumnTitles() {
-        // add the * to the title of the column if the snapshot is not saved
-        if (uiSnapshots.size() == 1) {
-            ((TooltipTableColumn<?>) getColumns().get(6)).setSaved(true); //uiSnapshots.get(0).isSaved());
-        } else {
-            TableColumn<TableEntry, ?> column = getColumns().get(4);
-            for (int i = 0; i < uiSnapshots.size(); i++) {
-                TableColumn tableColumn = column.getColumns().get(i);
-                if(tableColumn instanceof DividerTableColumn){
-                    continue;
-                }
-                ((TooltipTableColumn<?>) tableColumn).setSaved(true); //uiSnapshots.get(i).isSaved());
-            }
-        }
-    }
-
-    /**
-     * SnapshotTable cell renderer styled to fit the {@link DividerTableColumn}
-     */
-    private class DividerCell extends TableCell
-    {
-        @Override
-        protected void updateItem(final Object object, final boolean empty)
-        {
-            super.updateItem(object, empty);
-            getStyleClass().add("divider");
-        }
-    }
-
-    /**
-     * A table column styled to act as a divider between other columns.
-     */
-    private class DividerTableColumn extends TableColumn{
-
-        public DividerTableColumn(){
-            setPrefWidth(10);
-            setMinWidth(10);
-            setMaxWidth(50);
-            setCellFactory(c -> new DividerCell());
-        }
     }
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2018-2021 Oak Ridge National Laboratory.
+ * Copyright (c) 2018-2022 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -90,12 +90,13 @@ public class AlarmClient
     private long last_state_update = 0;
 
     /** Timeout, not seen any messages from server? */
-    private boolean has_timed_out = false;
+    private volatile boolean has_timed_out = false;
 
     /** @param server Kafka Server host:port
      *  @param config_name Name of alarm tree root
+     *  @param kafka_properties_file File to load additional kafka properties from
      */
-    public AlarmClient(final String server, final String config_name)
+    public AlarmClient(final String server, final String config_name, final String kafka_properties_file)
     {
         Objects.requireNonNull(server);
         Objects.requireNonNull(config_name);
@@ -105,8 +106,8 @@ public class AlarmClient
 
         root = new AlarmClientNode(null, config_name);
         final List<String> topics = List.of(config_topic);
-        consumer = KafkaHelper.connectConsumer(server, topics, topics);
-        producer = KafkaHelper.connectProducer(server);
+        consumer = KafkaHelper.connectConsumer(server, topics, topics, kafka_properties_file);
+        producer = KafkaHelper.connectProducer(server, kafka_properties_file);
 
         thread = new Thread(this::run, "AlarmClientModel " + config_name);
         thread.setDaemon(true);
@@ -173,7 +174,7 @@ public class AlarmClient
         }
     }
 
-    /** @param notify Select notify disable  ? */
+    /** @param disable_notify Select notify disable  ? */
     public void setNotify(final boolean disable_notify)
     {
         final String cmd = disable_notify ? JsonTags.DISABLE_NOTIFY : JsonTags.ENABLE_NOTIFY;
@@ -466,10 +467,10 @@ public class AlarmClient
     }
 
     /** Add a component to the alarm tree
-     *  @param path to parent Root or parent component under which to add the component
-     *  @param name Name of the new component
+     *  @param path_name to parent Root or parent component under which to add the component
+     *  @param new_name Name of the new component
      */
-    public void addComponent(final String path_name, final String new_name)
+    public void addComponent(final String path_name, final String new_name) throws Exception
     {
         try
         {
@@ -482,8 +483,8 @@ public class AlarmClient
     }
 
     /** Add a component to the alarm tree
-     *  @param path to parent Root or parent component under which to add the component
-     *  @param name Name of the new component
+     *  @param path_name to parent Root or parent component under which to add the component
+     *  @param new_name Name of the new component
      */
     public void addPV(final String path_name, final String new_name)
     {
@@ -509,7 +510,7 @@ public class AlarmClient
      *
      *  <p>All clients, including this one, will update when they receive the message
      *
-     *  @aram path Path to the item
+     *  @param path Path to the item
      *  @param config A prototype item (path is ignored) that holds the new configuration
      *  @throws Exception on error
      */
@@ -555,7 +556,7 @@ public class AlarmClient
     /** @param item Item for which to acknowledge alarm
      *  @param acknowledge <code>true</code> to acknowledge, else un-acknowledge
      */
-    public void acknowledge(final AlarmTreeItem<?> item, final boolean acknowledge)
+    public void acknowledge(final AlarmTreeItem<?> item, final boolean acknowledge) throws Exception
     {
         try
         {
@@ -567,7 +568,14 @@ public class AlarmClient
         catch (final Exception ex)
         {
             logger.log(Level.WARNING, "Cannot acknowledge component " + item, ex);
+            throw ex;
         }
+    }
+
+    /** @return <code>true</code> if connected to server, else updates have timed out */
+    public boolean isServerAlive()
+    {
+        return !has_timed_out;
     }
 
     /** Check if there have been any messages from server */

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2017 Oak Ridge National Laboratory.
+ * Copyright (c) 2017-2022 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -9,14 +9,16 @@ package org.csstudio.display.builder.runtime.app;
 
 import static org.csstudio.display.builder.runtime.WidgetRuntime.logger;
 
+
+import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 
 import org.csstudio.display.builder.model.DisplayModel;
@@ -38,6 +40,7 @@ import org.phoebus.ui.docking.DockItem;
 import org.phoebus.ui.docking.DockItemWithInput;
 import org.phoebus.ui.docking.DockPane;
 import org.phoebus.ui.docking.DockStage;
+import org.phoebus.ui.docking.Geometry;
 import org.phoebus.ui.javafx.ToolbarHelper;
 
 import javafx.application.Platform;
@@ -107,7 +110,7 @@ public class DisplayRuntimeInstance implements AppInstance
     {
         this(app, null);
     }
-    
+
     DisplayRuntimeInstance(final AppDescriptor app, String prefTarget)
     {
         this.app = app;
@@ -115,11 +118,14 @@ public class DisplayRuntimeInstance implements AppInstance
         DockPane dock_pane = null;
         if (prefTarget != null)
         {
-            if (prefTarget.equals("window"))
+            if (prefTarget.startsWith("window"))
             {
                 // Open new Stage in which this app will be opened, its DockPane is a new active one
                 final Stage new_stage = new Stage();
-                DockStage.configureStage(new_stage);
+                if (prefTarget.startsWith("window@"))
+                    DockStage.configureStage(new_stage, new Geometry(prefTarget.substring(7)));
+                else
+                    DockStage.configureStage(new_stage);
                 new_stage.show();
             }
             else
@@ -265,7 +271,7 @@ public class DisplayRuntimeInstance implements AppInstance
     }
 
     /** Load display file, represent it, start runtime
-     *  @param info Display file to load & represent
+     *  @param info Display file to load and represent
      */
     public void loadDisplayFile(final DisplayInfo info)
     {
@@ -330,13 +336,13 @@ public class DisplayRuntimeInstance implements AppInstance
                         "Cannot load model from\n" + info.getPath() + exception_message, ex);
 
                 display_info = Optional.empty();
-                
+
                 if (dock_item.prepareToClose())
 	                Platform.runLater(() ->
 	                {
 	                    final Parent parent = representation.getModelParent();
 	                    JFXRepresentation.getChildren(parent).clear();
-	                    
+
 	                    close();
 	                });
                 return;
@@ -502,4 +508,23 @@ public class DisplayRuntimeInstance implements AppInstance
 
         navigation.dispose();
     }
+
+    @Override
+    public Optional<Rectangle2D> getPositionAndSizeHint() {
+        return Optional.ofNullable(active_model).flatMap(displayModel -> {
+            Integer width = displayModel.propWidth().getValue();
+            Integer height = displayModel.propHeight().getValue();
+            if(width != null && width > 0 && height != null && height > 0) {
+                return Optional.of(new Rectangle2D.Double(
+                        displayModel.propX().getValue(),
+                        displayModel.propY().getValue(),
+                        width,
+                        height
+                ));
+            } else {
+                return Optional.empty();
+            }
+        });
+    }
+
 }

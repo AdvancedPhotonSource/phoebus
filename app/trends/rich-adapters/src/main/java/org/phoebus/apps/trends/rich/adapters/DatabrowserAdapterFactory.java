@@ -1,5 +1,7 @@
 package org.phoebus.apps.trends.rich.adapters;
 
+import static org.phoebus.logbook.LogEntryImpl.LogEntryBuilder.log;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -16,11 +18,9 @@ import org.phoebus.applications.email.EmailEntry;
 import org.phoebus.framework.adapter.AdapterFactory;
 import org.phoebus.logbook.AttachmentImpl;
 import org.phoebus.logbook.LogEntry;
+import org.phoebus.logbook.LogEntryImpl.LogEntryBuilder;
 import org.phoebus.logbook.LogbookPreferences;
 import org.phoebus.ui.javafx.Screenshot;
-import org.phoebus.logbook.LogEntryImpl.LogEntryBuilder;
-
-import static org.phoebus.logbook.LogEntryImpl.LogEntryBuilder.log;
 
 /**
  * A factory which adapts {@link DatabrowserSelection}s to {@link EmailEntry}s
@@ -91,13 +91,21 @@ public class DatabrowserAdapterFactory implements AdapterFactory {
         return Optional.ofNullable(null);
     }
 
+    /**
+     * Formats the body of the log entry.
+     *
+     * List of PVs is separated both by two blanks and a line separator. This is needed in order to get both the
+     * log entry editor and the Markdown text -> html conversion to render one PV per line.
+     * @param databrowserSelection The data selected from Data Browser
+     * @return The contents of the body text.
+     */
     private String getBody(DatabrowserSelection databrowserSelection)
     {
         StringBuffer body = new StringBuffer();
         databrowserSelection.getPlotTitle().ifPresent(body::append);
-        body.append("databrowser plot for the following pvs:" + System.lineSeparator());
-        body.append(databrowserSelection.getPlotPVs().stream().collect(Collectors.joining(System.lineSeparator())));
-        body.append(System.lineSeparator());
+        body.append("databrowser plot for the following pvs:  " + System.lineSeparator());
+        body.append(databrowserSelection.getPlotPVs().stream().collect(Collectors.joining("  " + System.lineSeparator())));
+        body.append("  " + System.lineSeparator());
         body.append("Over the time period: " +  databrowserSelection.getPlotTime().toAbsoluteInterval().toString());
         return body.toString();
     }
@@ -114,7 +122,7 @@ public class DatabrowserAdapterFactory implements AdapterFactory {
             file.deleteOnExit();
             try (FileOutputStream fileOutputStream = new FileOutputStream(file);)
             {
-                databrowserSelection.getPlotFile(fileOutputStream);
+                databrowserSelection.writePlotFile(fileOutputStream);
             }
         } catch (IOException e)
         {

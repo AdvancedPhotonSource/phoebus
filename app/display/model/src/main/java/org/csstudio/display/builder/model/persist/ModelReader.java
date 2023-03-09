@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015-2020 Oak Ridge National Laboratory.
+ * Copyright (c) 2015-2022 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -33,6 +33,7 @@ import org.w3c.dom.Element;
 
 /** Read model from XML.
  *
+ *  <pre>
  *  Stream (SAX, StAX) or DOM (JAXB, JDOM, org.w3c.dom)?
  *  ==============================================
  *  JAXB would allow direct mapping of XML elements into widget properties.
@@ -51,9 +52,9 @@ import org.w3c.dom.Element;
  *  How to get from XML to widgets?
  *  ===============================
  *  1) As before:
- *  Read <widget type="xy">,
+ *  Read &lt;widget type="xy">,
  *  create xyWidget,
- *  then for each property <x>,
+ *  then for each property &lt;x>,
  *  use widget.getProperty("x").readFromXML(reader)
  *
  *  + Properties know how to read their own data
@@ -65,10 +66,11 @@ import org.w3c.dom.Element;
  *
  *  2) Each widget registers a WidgetConfigurator.
  *  Default implementation behaves as above:
- *  For each property <x> in XML,
+ *  For each property &lt;x> in XML,
  *  use widget.getProperty("x").readFromXML(reader).
  *  .. but widget can provide a custom WidgetConfigurator
  *  and handle legacy properties in a different way.
+ *  </pre>
  *
  *  @author Kay Kasemir
  */
@@ -109,6 +111,19 @@ public class ModelReader
     public ModelReader(final InputStream stream, final String xml_file) throws Exception
     {
         root = XMLUtil.openXMLDocument(stream, XMLTags.DISPLAY);
+        version = readVersion(root);
+        widget_errors_during_parse = 0;
+        this.xml_file = xml_file;
+    }
+
+    /** Create reader.
+     *  @param elementRoot XML DOM element root to read from
+     *  @param xml_file Name of input file. Can be null if not applicable
+     *  @throws Exception on error
+     */
+    public ModelReader(final Element elementRoot, final String xml_file) throws Exception
+    {
+        root = elementRoot;
         version = readVersion(root);
         widget_errors_during_parse = 0;
         this.xml_file = xml_file;
@@ -347,7 +362,18 @@ public class ModelReader
     {
         final String text = element.getAttribute(XMLTags.VERSION);
         if (text.isEmpty())
+        {
+            // Does widget look like a legacy widget without a type?
+            // Then assume 1.0.0
+            if (element.getAttribute(XMLTags.TYPE).isEmpty() &&
+                element.getAttribute("typeId") != null  &&
+                element.getAttribute("typeId").startsWith("org.csstudio.opibuilder.widgets."))
+                return Widget.TYPICAL_LEGACY_WIDGET_VERSION;
+
+            // Otherwise assume it's a new version but created by a script or manually
+            // so didn't bother to populate more than absolutely necessary
             return Widget.BASE_WIDGET_VERSION;
+        }
         return Version.parse(text);
     }
 }

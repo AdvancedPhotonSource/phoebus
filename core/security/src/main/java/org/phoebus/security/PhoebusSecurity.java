@@ -11,16 +11,21 @@ import java.util.logging.Logger;
 
 import org.phoebus.framework.preferences.AnnotatedPreferences;
 import org.phoebus.framework.preferences.Preference;
+import org.phoebus.security.store.SecureStoreTarget;
 
-/** Phoebus security logger & Preference settings
+/** Phoebus security logger and Preference settings
  *  @author Kay Kasemir
  */
 @SuppressWarnings("nls")
 public class PhoebusSecurity
 {
+    /** Shared logger */
     public static final Logger logger = Logger.getLogger(PhoebusSecurity.class.getPackageName());
 
+    /** Preference setting */
     @Preference public static String authorization_file;
+
+    @Preference public static SecureStoreTarget secure_store_target;
 
     static
     {

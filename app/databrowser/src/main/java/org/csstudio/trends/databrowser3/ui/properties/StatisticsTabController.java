@@ -18,19 +18,6 @@
 
 package org.csstudio.trends.databrowser3.ui.properties;
 
-import javafx.application.Platform;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.SimpleObjectProperty;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.fxml.FXML;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.TableCell;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.cell.TextFieldTableCell;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.csstudio.javafx.rtplot.data.PlotDataSearch;
 import org.csstudio.trends.databrowser3.Messages;
@@ -46,9 +33,21 @@ import org.phoebus.framework.jobs.JobRunnable;
 import org.phoebus.util.time.TimeInterval;
 import org.phoebus.util.time.TimeRelativeInterval;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import javafx.application.Platform;
+import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.property.SimpleLongProperty;
+import javafx.fxml.FXML;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TableCell;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
+import javafx.scene.control.cell.TextFieldTableCell;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
 
 /**
  * Tab showing statistics data for traces. User needs to actively request computation of the statistical data.
@@ -71,26 +70,28 @@ public class StatisticsTabController implements ModelListener{
     @FXML
     private TableColumn<ModelItemStatistics, String> displayNameColumn;
     @FXML
-    private TableColumn<ModelItemStatistics, String> countColumn;
+    private TableColumn<ModelItemStatistics, Long> countColumn;
     @FXML
-    private TableColumn<ModelItemStatistics, String> meanColumn;
+    private TableColumn<ModelItemStatistics, Double> meanColumn;
     @FXML
-    private TableColumn<ModelItemStatistics, String> medianColumn;
+    private TableColumn<ModelItemStatistics, Double> medianColumn;
     @FXML
-    private TableColumn<ModelItemStatistics, String> stdDevColumn;
+    private TableColumn<ModelItemStatistics, Double> stdDevColumn;
     @FXML
-    private TableColumn<ModelItemStatistics, String> minColumn;
+    private TableColumn<ModelItemStatistics, Double> minColumn;
     @FXML
-    private TableColumn<ModelItemStatistics, String> maxColumn;
+    private TableColumn<ModelItemStatistics, Double> maxColumn;
     @FXML
-    private TableColumn<ModelItemStatistics, String> sumColumn;
+    private TableColumn<ModelItemStatistics, Double> sumColumn;
 
+    /** @param model Model */
     public StatisticsTabController(Model model){
         this.model = model;
     }
 
     private SimpleBooleanProperty refreshDisabled = new SimpleBooleanProperty(false);
 
+    /** Init */
     @FXML
     public void initialize() {
 
@@ -102,12 +103,14 @@ public class StatisticsTabController implements ModelListener{
         refreshAll.disableProperty().bind(refreshDisabled);
     }
 
+    /** @param modelItem Model item */
     @Override
     public void itemAdded(ModelItem modelItem) {
         ModelItemStatistics statistics = new ModelItemStatistics(modelItem);
         tracesTable.getItems().add(statistics);
     }
 
+    /** @param modelItem Model item */
     @Override
     public void changedItemLook(ModelItem modelItem){
         ModelItemStatistics statistics =
@@ -118,6 +121,7 @@ public class StatisticsTabController implements ModelListener{
         }
     }
 
+    /** @param modelItem Model item */
     @Override
     public void itemRemoved(ModelItem modelItem) {
         ModelItemStatistics statistics =
@@ -127,6 +131,7 @@ public class StatisticsTabController implements ModelListener{
         }
     }
 
+    /** Refresh all */
     @FXML
     public void refreshAll(){
         JobManager.schedule("Compute trace statistics", new JobRunnable() {
@@ -160,21 +165,22 @@ public class StatisticsTabController implements ModelListener{
         });
 
         countColumn.setText(Messages.StatisticsSampleCount);
-        countColumn.setCellValueFactory(cell -> cell.getValue().getCount());
+        countColumn.setCellValueFactory(cell -> cell.getValue().getCount().asObject());
         meanColumn.setText(Messages.StatisticsMean);
-        meanColumn.setCellValueFactory(cell -> cell.getValue().getMean());
+        meanColumn.setCellValueFactory(cell -> cell.getValue().getMean().asObject());
         medianColumn.setText(Messages.StatisticsMedian);
-        medianColumn.setCellValueFactory(cell -> cell.getValue().getMedian());
+        medianColumn.setCellValueFactory(cell -> cell.getValue().getMedian().asObject());
         stdDevColumn.setText(Messages.StatisticsStdDev);
-        stdDevColumn.setCellValueFactory(cell -> cell.getValue().getStdDev());
+        stdDevColumn.setCellValueFactory(cell -> cell.getValue().getStdDev().asObject());
         minColumn.setText(Messages.StatisticsMin);
-        minColumn.setCellValueFactory(cell -> cell.getValue().getMin());
+        minColumn.setCellValueFactory(cell -> cell.getValue().getMin().asObject());
         maxColumn.setText(Messages.StatisticsMax);
-        maxColumn.setCellValueFactory(cell -> cell.getValue().getMax());
+        maxColumn.setCellValueFactory(cell -> cell.getValue().getMax().asObject());
         sumColumn.setText(Messages.StatisticsSum);
-        sumColumn.setCellValueFactory(cell -> cell.getValue().getSum());
+        sumColumn.setCellValueFactory(cell -> cell.getValue().getSum().asObject());
     }
 
+    /** Remove listener */
     public void removeModelListener(){
         model.removeListener(this);
     }
@@ -199,13 +205,13 @@ public class StatisticsTabController implements ModelListener{
      * the data model for the table.
      */
     private class ModelItemStatistics {
-        private SimpleStringProperty count = new SimpleStringProperty();
-        private SimpleStringProperty mean = new SimpleStringProperty();
-        private SimpleStringProperty median = new SimpleStringProperty();
-        private SimpleStringProperty stdDev = new SimpleStringProperty();
-        private SimpleStringProperty min = new SimpleStringProperty();
-        private SimpleStringProperty max = new SimpleStringProperty();
-        private SimpleStringProperty sum = new SimpleStringProperty();
+        private SimpleLongProperty count = new SimpleLongProperty();
+        private SimpleDoubleProperty mean = new SimpleDoubleProperty(Double.NaN);
+        private SimpleDoubleProperty median = new SimpleDoubleProperty(Double.NaN);
+        private SimpleDoubleProperty stdDev = new SimpleDoubleProperty(Double.NaN);
+        private SimpleDoubleProperty min = new SimpleDoubleProperty(Double.NaN);
+        private SimpleDoubleProperty max = new SimpleDoubleProperty(Double.NaN);
+        private SimpleDoubleProperty sum = new SimpleDoubleProperty(Double.NaN);
         private SimpleObjectProperty colorIndicator = new SimpleObjectProperty();
         private SimpleStringProperty traceName = new SimpleStringProperty();
 
@@ -223,25 +229,25 @@ public class StatisticsTabController implements ModelListener{
          */
         private void clear(){
             Platform.runLater(() -> {
-                count.set(null);
-                mean.set(null);
-                median.set(null);
-                stdDev.set(null);
-                min.set(null);
-                max.set(null);
-                sum.set(null);
+                count.set(0);
+                mean.set(Double.NaN);
+                median.set(Double.NaN);
+                stdDev.set(Double.NaN);
+                min.set(Double.NaN);
+                max.set(Double.NaN);
+                sum.set(Double.NaN);
             });
         }
 
         private void set(DescriptiveStatistics statistics){
             Platform.runLater(() -> {
-                count.set(String.valueOf(statistics.getN()));
-                mean.set(String.valueOf(statistics.getMean()));
-                median.set(String.valueOf(statistics.getPercentile(50)));
-                stdDev.set(String.valueOf(statistics.getStandardDeviation()));
-                min.set(String.valueOf(statistics.getMin()));
-                max.set(String.valueOf(statistics.getMax()));
-                sum.set(String.valueOf(statistics.getSum()));
+                count.set(statistics.getN());
+                mean.set(statistics.getMean());
+                median.set(statistics.getPercentile(50));
+                stdDev.set(statistics.getStandardDeviation());
+                min.set(statistics.getMin());
+                max.set(statistics.getMax());
+                sum.set(statistics.getSum());
             });
         }
 
@@ -292,31 +298,31 @@ public class StatisticsTabController implements ModelListener{
             colorIndicator.set(new ColorIndicator(color));
         }
 
-        public SimpleStringProperty getCount() {
+        public SimpleLongProperty getCount() {
             return count;
         }
 
-        public SimpleStringProperty getStdDev() {
+        public SimpleDoubleProperty getStdDev() {
             return stdDev;
         }
 
-        public SimpleStringProperty getMean() {
+        public SimpleDoubleProperty getMean() {
             return mean;
         }
 
-        public SimpleStringProperty getMedian() {
+        public SimpleDoubleProperty getMedian() {
             return median;
         }
 
-        public SimpleStringProperty getMin() {
+        public SimpleDoubleProperty getMin() {
             return min;
         }
 
-        public SimpleStringProperty getMax() {
+        public SimpleDoubleProperty getMax() {
             return max;
         }
 
-        public SimpleStringProperty getSum() {
+        public SimpleDoubleProperty getSum() {
             return sum;
         }
 

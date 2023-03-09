@@ -8,7 +8,6 @@
 package org.phoebus.logbook.olog.ui.menu;
 
 import javafx.application.Platform;
-import javafx.scene.Node;
 import javafx.scene.control.MenuItem;
 import javafx.scene.image.Image;
 import org.phoebus.framework.jobs.JobManager;
@@ -43,24 +42,11 @@ public class SendLogbookAction extends MenuItem {
     /**
      * Constructor.
      *
-     * @param parent    JavaFX parent that context menu is called from.
-     * @param title     Initial title or <code>null</code>
-     * @param body      Initial body text or <code>null</code>
-     * @param get_image Supplier for image to attach, or <code>null</code>
-     */
-    public SendLogbookAction(final Node parent, final String title, final String body, final Supplier<Image> get_image) {
-        this(parent, title, body == null ? null : () -> body, get_image);
-    }
-
-    /**
-     * Constructor.
-     *
-     * @param parent    JavaFX parent that context menu is called from.
      * @param title     Initial title or <code>null</code>
      * @param get_body  Supplier for initial body text or <code>null</code>
      * @param get_image Supplier for image to attach, or <code>null</code>
      */
-    public SendLogbookAction(final Node parent, final String title, final Supplier<String> get_body, final Supplier<Image> get_image) {
+    public SendLogbookAction(final String title, final Supplier<String> get_body, final Supplier<Image> get_image) {
         super(MESSAGE, ImageCache.getImageView(SendLogbookAction.class, "/icons/logentry-add-16.png"));
 
         if (LogbookPreferences.is_supported)
@@ -79,14 +65,14 @@ public class SendLogbookAction extends MenuItem {
                     final File image_file = image == null ? null : new Screenshot(image).writeToTempfile("image");
 
                     // Create log entry via dialog on UI thread
-                    Platform.runLater(() -> submitLogEntry(parent, title, body, image_file));
+                    Platform.runLater(() -> submitLogEntry(title, body, image_file));
                 });
             });
         else
             setDisable(true);
     }
 
-    private void submitLogEntry(final Node parent, final String title, final String body, final File image_file) {
+    private void submitLogEntry(final String title, final String body, final File image_file) {
         OlogLog ologLog = new OlogLog();
         ologLog.setTitle(title != null ? title : "");
         ologLog.setDescription(body != null ? body : "");
@@ -101,6 +87,6 @@ public class SendLogbookAction extends MenuItem {
                 logger.log(Level.WARNING, "Cannot attach " + image_file, ex);
             }
         }
-        new LogEntryEditorStage(parent, ologLog).show();
+        new LogEntryEditorStage(ologLog).show();
     }
 }

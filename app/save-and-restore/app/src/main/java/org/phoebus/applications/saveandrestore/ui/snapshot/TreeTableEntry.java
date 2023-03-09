@@ -31,14 +31,14 @@ import javafx.scene.control.CheckBoxTreeItem;
 import javafx.scene.control.TreeTableView;
 import org.epics.vtype.VType;
 import org.phoebus.applications.saveandrestore.ui.SingleListenerBooleanProperty;
-import org.phoebus.applications.saveandrestore.ui.model.VTypePair;
+import org.phoebus.applications.saveandrestore.common.VTypePair;
 
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * {@link TableEntry} wrapper for supporting {@link TreeTableView} for Snapshot PVs
+ * {@link TableEntry} wrapper for supporting {@link TreeTableView} for SnapshotData PVs
  *
  * @author <a href="mailto:changj@frib.msu.edu">Genie Jhang</a>
  */
@@ -64,7 +64,7 @@ public class TreeTableEntry {
 
     private ChangeListener<Boolean> tableEntryReadonlyChangeListener = null;
 
-    public void initializeEqualPropertyChangeListener(SnapshotController controller) {
+    public void initializeEqualPropertyChangeListener(RestoreSnapshotController controller) {
         equalPropertyChangeListener = (observableValue, oldValue, newValue) -> {
             if (controller.isHideEqualItems()) {
                 if (newValue) {

@@ -2,41 +2,83 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.phoebus</groupId>
   <artifactId>parent</artifactId>
-  <version>4.6.6-SNAPSHOT</version>
+  <version>4.7.2-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>phoebus (parent)</name>
+  <description>A framework and set of tools to monitor and operate large scale control systems, such as the ones in the accelerator community.</description>
+  <url>http://www.phoebus.org/</url>
+
+  <licenses>
+    <license>
+      <name>Eclipse Public License 1.0</name>
+      <url>https://www.eclipse.org/legal/epl-v10.html</url>
+    </license>
+  </licenses>
 
   <scm>
+    <connection>scm:git:git://github.com/ControlSystemStudio/phoebus.git</connection>
     <developerConnection>scm:git:https://github.com/ControlSystemStudio/phoebus</developerConnection>
+    <url>https://github.com/ControlSystemStudio/phoebus/tree/master</url>
     <tag>HEAD</tag>
   </scm>
 
+  <developers>
+    <developer>
+      <name>Kay Kasemir</name>
+      <email>kasemirk@ornl.gov</email>
+      <organization>Oak Ridge National Lab</organization>
+      <organizationUrl>https://github.com/ornl-epics</organizationUrl>
+    </developer>
+    <developer>
+      <name>Kunal Shroff</name>
+      <email>kunalshroff9@gmail.com</email>
+      <organization>Brookhaven National Lab</organization>
+      <organizationUrl>https://github.com/shroffk</organizationUrl>
+    </developer>
+    <developer>
+      <name>Georg Weiss</name>
+      <email>georg.weiss@ess.eu</email>
+      <organization>European Spallation Source</organization>
+      <organizationUrl>https://github.com/georgweiss</organizationUrl>
+    </developer>
+  </developers>
+
   <distributionManagement>
+    <!-- To be able to deploy, set login/passwd in your m2 settings.xml, <servers> section
+(id values there should match ids below) -->
+    <snapshotRepository>
+      <id>phoebus-sonatype-nexus-snapshots</id>
+      <name>phoebus-sonatype-nexus-snapshots</name>
+      <url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>
+    </snapshotRepository>
     <repository>
-      <id>github</id>
-      <name>GitHub Packages</name>
-      <url>https://maven.pkg.github.com/ControlSystemStudio/phoebus</url>
+      <id>phoebus-releases</id>
+      <url>https://s01.oss.sonatype.org/content/repositories/releases</url>
     </repository>
   </distributionManagement>
 
   <properties>
-    <epics.version>7.0.7</epics.version>
-    <vtype.version>1.0.4</vtype.version>
-    <openjfx.version>16</openjfx.version>
-    <jackson.version>2.10.1</jackson.version>
+    <epics.version>7.0.8</epics.version>
+    <vtype.version>1.0.5</vtype.version>
+    <openjfx.version>19</openjfx.version>
+    <jackson.version>2.12.3</jackson.version>
     <batik.version>1.14</batik.version>
     <mockito.version>2.23.4</mockito.version>
     <postgresql.driver.version>42.2.9</postgresql.driver.version>
-    <lombok.version>1.18.16</lombok.version>
+    <!-- When connections to older MySQL server fail because of CLIENT_PLUGIN_AUTH, downgrade to 5.1.45 -->
+    <mysql.version>8.0.30</mysql.version>
     <jetty.version>9.4.30.v20200611</jetty.version>
     <apache.commons.math.version>3.6.1</apache.commons.math.version>
-    <junit.version>4.13.1</junit.version>
-    <es.version>6.8.4</es.version>
+    <junit.version>5.8.2</junit.version>
+    <elasticsearch.version>8.2.0</elasticsearch.version>
     <!--<maven.repo.local>${project.build.directory}/.m2</maven.repo.local> -->
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <skipITTests>true</skipITTests>
     <guava.version>31.0.1-jre</guava.version>
+    <log4j-to-slf4j.version>2.17.1</log4j-to-slf4j.version>
+    <derby.version>10.16.1.1</derby.version>
+    <jython.version>2.7.3</jython.version>
   </properties>
   <build>
     <plugins>
@@ -64,7 +106,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>2.20</version>
+        <version>3.0.0-M7</version>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -81,11 +123,25 @@
             </goals>
           </execution>
         </executions>
+      </plugin>  
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.1.1</version>
+        <configuration>
+          <!-- Only document 'public' code -->
+          <show>public</show>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-release-plugin</artifactId>
-        <version>2.5.3</version>
+        <version>3.0.0-M5</version>
+        <configuration>
+          <tagNameFormat>v@{project.version}</tagNameFormat>
+          <autoVersionSubmodules>true</autoVersionSubmodules>
+          <releaseProfiles>releases</releaseProfiles>
+        </configuration>
       </plugin>
     </plugins>
   </build>
@@ -136,6 +192,25 @@
                 <include>**/*UI.java</include>
                 <include>**/*IT.java</include>
               </includes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+        <!-- The docker-tests profile sets the ignore_local_ipv6
+        environment variable to true since IPV6 is not supported in Github Actions at the moment. See ticket #2161 -->
+    <profile>
+      <id>docker-tests</id>
+      <build>
+        <plugins>
+          <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.0.0-M7</version>
+            <configuration>
+              <systemPropertyVariables>
+                <ignore_local_ipv6>true</ignore_local_ipv6>
+               </systemPropertyVariables>
             </configuration>
           </plugin>
         </plugins>
@@ -251,42 +326,35 @@
         </plugins>
       </reporting>
     </profile>
-    <!-- A profile for preparing and releasing phoebus.
-     Please refer to http://maven.apache.org/maven-release/maven-release-plugin/index.html
-      for the detailed description of the steps involved. -->
+    <!-- Release profile -->
     <profile>
-      <id>release</id>
+      <id>releases</id>
       <build>
         <plugins>
           <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-release-plugin</artifactId>
-            <version>2.5.3</version>
+            <groupId>org.sonatype.plugins</groupId>
+            <artifactId>nexus-staging-maven-plugin</artifactId>
+            <version>1.6.8</version>
+            <extensions>true</extensions>
             <configuration>
-              <preparationGoals>exec:exec</preparationGoals>
-              <checkModificationExcludes>
-                <checkModificationExclude>**/.project</checkModificationExclude>
-                <checkModificationExclude>**/.classpath</checkModificationExclude>
-                <checkModificationExclude>pom.xml</checkModificationExclude>
-                <checkModificationExclude>**/phoebus-target/pom.xml</checkModificationExclude>
-              </checkModificationExcludes>
+              <serverId>phoebus-releases</serverId>
+              <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
+              <autoReleaseAfterClose>false</autoReleaseAfterClose>
             </configuration>
           </plugin>
-
           <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>exec-maven-plugin</artifactId>
-            <version>1.6.0</version>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.0.1</version>
             <executions>
               <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
                 <goals>
-                  <goal>exec</goal>
+                  <goal>sign</goal>
                 </goals>
               </execution>
             </executions>
-            <configuration>
-              <executable>hostname</executable>
-            </configuration>
           </plugin>
         </plugins>
       </build>
@@ -294,11 +362,16 @@
   </profiles>
 
   <repositories>
-    <!-- The Nexus snapshot repository hosting the latest diirt modules -->
+    <!-- The Nexus snapshotData repository hosting the latest diirt modules -->
     <repository>
       <id>sonatype-nexus-snapshots</id>
       <name>sonatype-nexus-snapshots</name>
       <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+    </repository>
+    <repository>
+      <id>es-snapshots</id>
+      <name>elasticsearch snapshotData repo</name>
+      <url>https://snapshots.elastic.co/maven/</url>
     </repository>
   </repositories>
 

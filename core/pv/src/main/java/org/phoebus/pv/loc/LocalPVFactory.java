@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014-2020 Oak Ridge National Laboratory.
+ * Copyright (c) 2014-2022 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -7,7 +7,6 @@
  ******************************************************************************/
 package org.phoebus.pv.loc;
 
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +31,7 @@ import org.phoebus.pv.PVPool;
 @SuppressWarnings("nls")
 public class LocalPVFactory implements PVFactory
 {
+    /** PV type implemented by this factory */
     final public static String TYPE = "loc";
 
     /** Map of local PVs */
@@ -61,7 +61,7 @@ public class LocalPVFactory implements PVFactory
         final String[] ntv = ValueHelper.parseName(base_name);
 
         // Actual name: loc://the_pv  without <type> or (initial value)
-        final String actual_name = LocalPVFactory.TYPE + PVPool.SEPARATOR + ntv[0];
+        final String actual_name = PVPool.TypedName.format(LocalPVFactory.TYPE, ntv[0]);
 
         // Info for initial value, null if nothing provided
         final List<String> initial_value = ValueHelper.splitInitialItems(ntv[2]);
@@ -86,6 +86,10 @@ public class LocalPVFactory implements PVFactory
         return pv;
     }
 
+    /** @param items Initialization items
+     *  @return Best matching VType
+     *  @throws Exception on error
+     */
     public static Class<? extends VType> determineValueType(final List<String> items) throws Exception
     {
         if (items == null)
@@ -107,6 +111,10 @@ public class LocalPVFactory implements PVFactory
         }
     }
 
+    /** @param type Text with type like "string", "VDouble", ..
+     *  @return Best matching VType
+     *  @throws Exception on error
+     */
     public static Class<? extends VType> parseType(final String type) throws Exception
     {   // Lenient check, ignore case and allow partial match
         final String lower = type.toLowerCase();
@@ -140,15 +148,6 @@ public class LocalPVFactory implements PVFactory
         synchronized (local_pvs)
         {
             local_pvs.remove(pv.getName());
-        }
-    }
-
-    // For unit test
-    public static Collection<LocalPV> getLocalPVs()
-    {
-        synchronized (local_pvs)
-        {
-            return local_pvs.values();
         }
     }
 }

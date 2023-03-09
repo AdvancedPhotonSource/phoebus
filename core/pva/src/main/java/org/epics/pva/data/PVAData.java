@@ -21,8 +21,10 @@ import java.util.BitSet;
 @SuppressWarnings("nls")
 public abstract class PVAData
 {
+    /** Name */
     protected final String name;
 
+    /** @param name Name for data item */
     protected PVAData(final String name)
     {
         this.name = name;
@@ -92,13 +94,22 @@ public abstract class PVAData
      *  @param level Indentation level
      *  @param buffer Buffer to which to add this type
      */
-    protected abstract void formatType(int level, StringBuilder buffer);
+    protected void formatType(final int level, final StringBuilder buffer)
+    {
+        indent(level, buffer);
+        buffer.append(getType()).append(" ").append(name);
+    }
 
     /** Format the type and data with indentation
      *  @param level Indentation level
      *  @param buffer Buffer to which to add this value
      */
     protected abstract void format(int level, StringBuilder buffer);
+
+    /**
+     * Retrieve the type of the pvData.
+     */
+    public abstract String getType();
 
     /** Add indentation
      *  @param level Indentation level

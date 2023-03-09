@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2018-2019 Oak Ridge National Laboratory.
+ * Copyright (c) 2018-2022 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,9 +12,11 @@ import java.util.List;
 import org.phoebus.applications.alarm.client.AlarmClient;
 import org.phoebus.applications.alarm.model.AlarmTreeItem;
 import org.phoebus.applications.alarm.model.AlarmTreeLeaf;
+import org.phoebus.applications.alarm.ui.Messages;
 import org.phoebus.framework.jobs.JobManager;
 import org.phoebus.ui.autocomplete.PVAutocompleteMenu;
 import org.phoebus.ui.dialog.DialogHelper;
+import org.phoebus.ui.dialog.ExceptionDetailsErrorDialog;
 import org.phoebus.ui.javafx.ImageCache;
 
 import javafx.application.Platform;
@@ -79,6 +81,8 @@ class AddComponentAction extends MenuItem
 
             layout.add(message, 1, 2);
 
+            // Update hint as user types or selects type
+            types.selectedToggleProperty().addListener((prop, old, value) -> checkName(name.getText()));
             name.textProperty().addListener( (prop, old, value) -> checkName(value));
 
             setTitle("Add Component to " + parent.getPathName());
@@ -125,7 +129,7 @@ class AddComponentAction extends MenuItem
                     message.setText("Adding " + names.size() + " PVs");
             }
             else
-                message.setText("");
+                message.setText("Add name of new Node");
         }
 
         public boolean isPV()
@@ -152,7 +156,7 @@ class AddComponentAction extends MenuItem
             final AddComponentDialog dialog = new AddComponentDialog(parent);
             DialogHelper.positionDialog(dialog, node, -100, -50);
             final String new_name = dialog.showAndWait().orElse(null);
-            if (new_name == null  ||  new_name.isEmpty())
+            if (new_name == null  ||  new_name.isBlank())
                 return;
 
             // Add in background thread
@@ -188,8 +192,24 @@ class AddComponentAction extends MenuItem
                     }
                 }
                 else
-                    if (! haveExistingItem(node, parent, new_name))
-                        model.addComponent(parent.getPathName(), new_name);
+                {
+                    // Dialog allows entering several space- or line-separated names
+                    // to support a list of PVs.
+                    // For components, squash that into one new, trimmed name
+                    final String comp_name = new_name.replace('\r', ' ')
+                                                     .replace('\n', ' ')
+                                                     .replaceAll(" +", " ")
+                                                     .trim();
+                    if (! haveExistingItem(node, parent, comp_name)) {
+                        try {
+                            model.addComponent(parent.getPathName(), comp_name);
+                        } catch (Exception e) {
+                            ExceptionDetailsErrorDialog.openError(Messages.error,
+                                    Messages.addComponentFailed,
+                                    e);
+                        }
+                    }
+                }
             });
         });
     }
