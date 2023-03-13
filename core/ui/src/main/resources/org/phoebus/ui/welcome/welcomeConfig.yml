@@ -1,0 +1,8 @@
+# configuration of the welcome page
+# ANL logo
+anlLogo:
+  path: ../../../../icons/argonneLogo.png
+  height: 80px
+  topMargin: 210px
+  leftMargin: 10px
+  

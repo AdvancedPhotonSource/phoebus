@@ -1,42 +1,68 @@
 <html>
+
 <head>
-<style>
-body
-{
-    padding: 2ex;
-}
-.footer
-{
-  position: fixed;
-  left: 2ex;
-  bottom: 0;
-  width: 100%;
-  font-style: italic;
-}
-</style>
+  <style>
+    body {
+      padding: 2ex;
+    }
+
+    .footer {
+      position: fixed;
+      left: 2ex;
+      bottom: 0;
+      width: 100%;
+      font-style: italic;
+    }
+
+    .image-container {
+      position: relative;
+    }
+
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 </head>
+
 <body>
 
-<h1>Welcome to CS-Studio (Phoebus)!</h1>
+  <h1>Welcome to CS-Studio (Phoebus)!</h1>
 
-<img src="../../../../icons/splash.png">
+  <div class="image-container">
+    <img id="cs-phoebus" src="../../../../icons/splash.png">
+    <img id="anl" src="" style="z-index:1; position:absolute" >
+  </div>
 
-<p>
-To get started, try the menu item <code>File</code>, <code>Top Resources</code>. 
-</p>
+  <script>
+    // Configure image anl according to yaml file.
+    fetch('welcomeConfig.yml')
+      .then(response => response.text())
+      .then(data => {
+        var anlConfig = jsyaml.load(data).anlLogo;
+        var anlImage = document.getElementById("anl");
+        anlImage.src = anlConfig.path;
+        anlImage.style.height = anlConfig.height;
+        anlImage.style.top = anlConfig.topMargin;
+        anlImage.style.left = anlConfig.leftMargin;
+      })
+      .catch(error => console.error(error));
+  </script>
 
-<p>
-To install example displays,
-use the menu item <code>Applications</code>,
-<code>Display</code>, <code>Examples</code>,
-<code>Install Example Displays</code>.
-</p>
+  <p>
+    To get started, try the menu item <code>File</code>, <code>Top Resources</code>.
+  </p>
 
-<div class="footer">
-Close this panel by clicking the "x" in the "Welcome" tab.
-If you want to see this panel again,
-close all panels and restart CS-Studio.
-</div>
+  <p>
+    To install example displays,
+    use the menu item <code>Applications</code>,
+    <code>Display</code>, <code>Examples</code>,
+    <code>Install Example Displays</code>.
+  </p>
+
+  <div class="footer">
+    Close this panel by clicking the "x" in the "Welcome" tab.
+    If you want to see this panel again,
+    close all panels and restart CS-Studio.
+  </div>
 
 </body>
+
 </html>
