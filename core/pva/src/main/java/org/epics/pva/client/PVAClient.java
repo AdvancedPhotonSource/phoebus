@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Oak Ridge National Laboratory.
+ * Copyright (c) 2019-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.logging.Level;
 
 import org.epics.pva.PVASettings;
@@ -89,13 +89,13 @@ public class PVAClient implements AutoCloseable
 
         // TCP traffic is handled by one ClientTCPHandler per address (IP, socket).
         // Pass helper to channel search for getting such a handler.
-        final Function<InetSocketAddress, ClientTCPHandler> tcp_provider = the_addr ->
+        final BiFunction<InetSocketAddress, Boolean, ClientTCPHandler> tcp_provider = (the_addr, use_tls) ->
             tcp_handlers.computeIfAbsent(the_addr, addr ->
             {
                 try
                 {
                     // If absent, create with initial empty GUID
-                    return new ClientTCPHandler(this, addr, Guid.EMPTY);
+                    return new ClientTCPHandler(this, addr, Guid.EMPTY, use_tls);
                 }
                 catch (Exception ex)
                 {
@@ -216,7 +216,7 @@ public class PVAClient implements AutoCloseable
             search.boost();
     }
 
-    void handleSearchResponse(final int channel_id, final InetSocketAddress server, final int version, final Guid guid)
+    void handleSearchResponse(final int channel_id, final InetSocketAddress server, final int version, final Guid guid, final boolean tls)
     {
         // Generic server 'list' response?
         if (channel_id < 0)
@@ -248,13 +248,13 @@ public class PVAClient implements AutoCloseable
             return;
         }
         channel.setState(ClientChannelState.FOUND);
-        logger.log(Level.FINE, () -> "Reply for " + channel + " from " + server + " " + guid);
+        logger.log(Level.FINE, () -> "Reply for " + channel + " from " + (tls ? "TLS " : "TCP ") + server + " " + guid);
 
         final ClientTCPHandler tcp = tcp_handlers.computeIfAbsent(server, addr ->
         {
             try
             {
-                return new ClientTCPHandler(this, addr, guid);
+                return new ClientTCPHandler(this, addr, guid, tls);
             }
             catch (Exception ex)
             {
@@ -262,9 +262,14 @@ public class PVAClient implements AutoCloseable
             }
             return null;
         });
-        // In case of connection errors (TCP connection blocked by firewall),
-        // tcp will be null
-        if (tcp != null)
+        // In case of connection errors, tcp will be null
+        if (tcp == null)
+        {   // Cannot connect to server on provided port? Likely a server or firewall problem.
+            // On the next search, that same server might reply and then we fail the same way on connect.
+            // Still, no way around re-registering the search so we succeed once the server is fixed.
+            search.register(channel, false /* not "now" but eventually */);
+        }
+        else
         {
             if (tcp.updateGuid(guid))
                 logger.log(Level.FINE, "Search-only TCP handler received GUID, now " + tcp);

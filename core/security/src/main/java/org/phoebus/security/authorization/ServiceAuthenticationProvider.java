@@ -18,6 +18,8 @@
 
 package org.phoebus.security.authorization;
 
+import org.phoebus.security.tokens.AuthenticationScope;
+
 /**
  * Implementations of this interface are used to announce support for
  * a log in procedure to a service.
@@ -33,21 +35,21 @@ public interface ServiceAuthenticationProvider {
 
     /**
      * Signs out user from the service.
-     * @param token User name or other type of token (e.g. session cookie).
+     * @param token Username or other type of token (e.g. session cookie).
      */
     void logout(String token);
 
     /**
      * The identity of the announced service. This must be unique between all implementations.
-     *
      * <b>NOTE:</b> This identity is used to create keys (aka aliases)
      * under which credentials are persisted in the
      * {@link org.phoebus.security.store.SecureStore}. Such keys are stored in
      * <b>lower</b> case in the key store that backs {@link org.phoebus.security.store.SecureStore}, and
      * is a behavior defined by the encryption scheme implementation.
-     * Consequently an identity like "UPPER" will be persisted as "upper", i.e. case insensitivity
+     * Consequently, an identity like "UPPER" will be persisted as "upper", i.e. case insensitivity
      * must be considered when defining an identity.
      * @return Service name
      */
-    String getServiceName();
+    AuthenticationScope getAuthenticationScope();
+
 }

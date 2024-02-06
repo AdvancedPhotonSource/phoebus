@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2017-2022 Oak Ridge National Laboratory.
+ * Copyright (c) 2017-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,8 +11,6 @@ import static org.csstudio.display.builder.runtime.WidgetRuntime.logger;
 
 
 import java.awt.geom.Rectangle2D;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -22,8 +20,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 
 import org.csstudio.display.builder.model.DisplayModel;
+import org.csstudio.display.builder.model.Preferences;
 import org.csstudio.display.builder.model.Widget;
-import org.csstudio.display.builder.model.macros.DisplayMacroExpander;
 import org.csstudio.display.builder.model.persist.ModelLoader;
 import org.csstudio.display.builder.model.util.ModelResourceUtil;
 import org.csstudio.display.builder.representation.javafx.JFXRepresentation;
@@ -243,11 +241,14 @@ public class DisplayRuntimeInstance implements AppInstance
     /** Handle Alt-left & right as navigation keys */
     private void handleKeys(final KeyEvent event)
     {
+        KeyCode keycode = event.getCode();
+        if(keycode == KeyCode.F5)
+            this.reload();
         if (event.isAltDown())
         {
-            if (event.getCode() == KeyCode.LEFT  &&  !navigate_backward.isDisabled())
+            if (keycode == KeyCode.LEFT  &&  !navigate_backward.isDisabled())
                 navigate_backward.getOnAction().handle(null);
-            else if (event.getCode() == KeyCode.RIGHT  &&  !navigate_forward.isDisabled())
+            else if (keycode == KeyCode.RIGHT  &&  !navigate_forward.isDisabled())
                 navigate_forward.getOnAction().handle(null);
         }
     }
@@ -337,15 +338,18 @@ public class DisplayRuntimeInstance implements AppInstance
 
                 display_info = Optional.empty();
 
-                if (dock_item.prepareToClose())
-	                Platform.runLater(() ->
-	                {
-	                    final Parent parent = representation.getModelParent();
-	                    JFXRepresentation.getChildren(parent).clear();
+                boolean shouldClose = dock_item.okToClose().get();
 
-	                    close();
-	                });
-                return;
+                if (shouldClose) {
+                    dock_item.prepareToClose();
+                    Platform.runLater(() ->
+                    {
+                        final Parent parent = representation.getModelParent();
+                        JFXRepresentation.getChildren(parent).clear();
+
+                        close();
+                    });
+                }
             }
         });
     }
@@ -376,12 +380,12 @@ public class DisplayRuntimeInstance implements AppInstance
         //    Could simply use info's macros if they are non-empty,
         //    but merging macros with those loaded from model file
         //    allows for newly added macros in the display file.
-        final Macros macros = Macros.merge(model.propMacros().getValue(), info.getMacros());
-        model.propMacros().setValue(macros);
+        final Macros environment = new Macros();
+        Preferences.getMacros().forEachSpec(environment::add);
+        info.getMacros().forEachSpec(environment::add);
 
-        // For runtime, expand macros
-        if (! representation.isEditMode())
-            DisplayMacroExpander.expandDisplayMacros(model);
+        model.expandMacros(environment);
+
         return model;
     }
 
@@ -409,6 +413,7 @@ public class DisplayRuntimeInstance implements AppInstance
     {
         final DisplayInfo old_info = display_info.orElse(null);
         final DisplayInfo info = DisplayInfo.forModel(model);
+
         // A display might be loaded without macros,
         // but the DisplayModel may then have macros configured in the display itself.
         //
@@ -450,21 +455,6 @@ public class DisplayRuntimeInstance implements AppInstance
         // Close handler disposes runtime and representation for model
         if (model != null)
             ActionUtil.handleClose(model);
-    }
-
-    /** Show error message and stack trace
-     *  @param message Message
-     *  @param error
-     */
-    private void showError(final String message, final Throwable error)
-    {
-        logger.log(Level.WARNING, message, error);
-
-        final ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        final PrintStream out = new PrintStream(buf);
-        out.append(message).append("\n\n");
-        error.printStackTrace(out);
-        showMessage(buf.toString());
     }
 
     /** Show message

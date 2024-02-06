@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Oak Ridge National Laboratory.
+ * Copyright (c) 2019-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,8 +10,8 @@ package org.epics.pva.client;
 import static org.epics.pva.PVASettings.logger;
 
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -22,10 +22,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
+import javax.net.ssl.SSLSocket;
+
 import org.epics.pva.PVASettings;
 import org.epics.pva.common.CommandHandlers;
 import org.epics.pva.common.PVAHeader;
 import org.epics.pva.common.RequestEncoder;
+import org.epics.pva.common.SecureSockets;
 import org.epics.pva.common.TCPHandler;
 import org.epics.pva.data.PVATypeRegistry;
 import org.epics.pva.server.Guid;
@@ -55,6 +58,13 @@ class ClientTCPHandler extends TCPHandler
 
     /** Client context */
     private final PVAClient client;
+
+    /** When using TLS, the socket may come with a local certificate
+     *  that TLS uses to authenticate to the server,
+     *  and this is the name from that certificate.
+     *  Otherwise <code>null</code>
+     */
+    private String x509_name;
 
     /** Channels that use this connection */
     private final CopyOnWriteArrayList<PVAChannel> channels = new CopyOnWriteArrayList<>();
@@ -97,31 +107,35 @@ class ClientTCPHandler extends TCPHandler
      *  Client must not send get/put/.. messages until
      *  this flag is set.
      */
-    private final AtomicBoolean connection_validated = new AtomicBoolean();
+    private final AtomicBoolean connection_validated = new AtomicBoolean(false);
 
-    public ClientTCPHandler(final PVAClient client, final InetSocketAddress address, final Guid guid) throws Exception
+    public ClientTCPHandler(final PVAClient client, final InetSocketAddress address, final Guid guid, final boolean tls) throws Exception
     {
-        super(createSocket(address), true);
+        super(createSocket(address, tls), true);
         logger.log(Level.FINE, () -> "TCPHandler " + guid + " for " + address + " created ============================");
         this.client = client;
         this.guid = guid;
+
+        // For TLS, check if the socket has a name that's used to authenticate
+        x509_name = tls ? SecureSockets.getLocalPrincipalName((SSLSocket) socket) : null;
 
         // For default EPICS_CA_CONN_TMO: 30 sec, send echo at ~15 sec:
         // Check every ~3 seconds
         last_life_sign = last_message_sent = System.currentTimeMillis();
         final long period = Math.max(1, PVASettings.EPICS_PVA_CONN_TMO * 1000L / 30 * 3);
         alive_check = timer.scheduleWithFixedDelay(this::checkResponsiveness, period, period, TimeUnit.MILLISECONDS);
-        // Don't start the send thread, yet.
+
+        // Start receiver, but not the send thread, yet.
         // To prevent sending messages before the server is ready,
         // it's started when server confirms the connection.
+        startReceiver();
     }
 
-    private static SocketChannel createSocket(InetSocketAddress address) throws Exception
+    private static Socket createSocket(final InetSocketAddress address, final boolean tls) throws Exception
     {
-        final SocketChannel socket = SocketChannel.open(address);
-        socket.configureBlocking(true);
-        socket.socket().setTcpNoDelay(true);
-        socket.socket().setKeepAlive(true);
+        final Socket socket = SecureSockets.createClientSocket(address, tls);
+        socket.setTcpNoDelay(true);
+        socket.setKeepAlive(true);
         return socket;
     }
 
@@ -129,6 +143,12 @@ class ClientTCPHandler extends TCPHandler
     PVAClient getClient()
     {
         return client;
+    }
+
+    /** @return Name used by TLS socket's certificate, or <code>null</code> */
+    String getX509Name()
+    {
+        return x509_name;
     }
 
     /** @param channel Channel that uses this TCP connection */

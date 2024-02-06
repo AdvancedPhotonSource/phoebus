@@ -106,13 +106,15 @@ public class LogEntryDisplayController {
         new LogEntryEditorStage(new OlogLog(),  logEntryProperty.get(), null).show();
     }
 
+    @FXML
+    public void newLogEntry(){
+        // Show a new editor dialog.
+        new LogEntryEditorStage(new OlogLog(),  null, null).show();
+    }
+
     public void setLogEntry(LogEntry logEntry) {
         if(logEntry == null){
             currentViewProperty.set(EMPTY);
-        }
-        // There is no need to update the view if it is already showing it.
-        else if(logEntryProperty.get() != null && logEntryProperty.get().getId().equals(logEntry.getId())){
-            return;
         }
         else{
             logEntryProperty.set(logEntry);
@@ -126,5 +128,16 @@ public class LogEntryDisplayController {
 
     public LogEntry getLogEntry() {
         return logEntryProperty.get();
+    }
+
+    /**
+     * Updates the current {@link LogEntry} if it matches the passed argument.
+     * @param logEntry A log entry that has been updated by user and saved by service.
+     */
+    public void updateLogEntry(LogEntry logEntry){
+        // Log entry display may be "empty", i.e. logEntryProperty not set yet
+        if(!logEntryProperty.isNull().get() && logEntryProperty.get().getId() == logEntry.getId()){
+            setLogEntry(logEntry);
+        }
     }
 }

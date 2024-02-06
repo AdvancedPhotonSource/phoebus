@@ -7,12 +7,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.phoebus.alarm.logging.AlarmLoggingService;
 import org.phoebus.alarm.logging.ElasticClientHelper;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -35,6 +38,9 @@ public class SearchController {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    @Value("${version:1.0.0}")
+    private String version;
+
     /**
      * @return Information about the alarm logging service
      */
@@ -43,7 +49,7 @@ public class SearchController {
 
         Map<String, Object> alarmLoggingServiceInfo = new LinkedHashMap<String, Object>();
         alarmLoggingServiceInfo.put("name", "Alarm logging Service");
-        //alarmLoggingServiceInfo.put("version", version);
+        alarmLoggingServiceInfo.put("version", version);
 
         Map<String, String> elasticInfo = new LinkedHashMap<String, String>();
         try {
@@ -84,6 +90,12 @@ public class SearchController {
 
     @RequestMapping(value = "/search/alarm/config", method = RequestMethod.GET)
     public List<AlarmLogMessage> searchConfig(@RequestParam Map<String, String> allRequestParams) {
+        if(allRequestParams == null ||
+                allRequestParams.isEmpty() ||
+                !allRequestParams.containsKey("config") ||
+                allRequestParams.get("config").isEmpty()){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        }
         List<AlarmLogMessage> result = AlarmLogSearchUtil.searchConfig(ElasticClientHelper.getInstance().getClient(), allRequestParams);
         return result;
     }

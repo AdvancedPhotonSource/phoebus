@@ -11,6 +11,9 @@ The application uses the save-and-restore service deployed on the network such t
 HTTP(s). The URL of the service is specified in the save-and-restore.properties file, or in the settings file
 pointed to on the command line.
 
+Actions that create, modify or delete data are protected by the service. User must sign in through the
+Crendentials Manager application. See also below.
+
 Nodes and node types
 --------------------
 
@@ -48,7 +51,7 @@ Node names and ordering
 Node names are case sensitive. Within a parent node child node names must be unique between nodes of same type.
 
 Child nodes in the tree view are ordered first by type (folders, configurations, composite snapshots), then by name.
-Child nodes of configurations can only be of type snapshot, so these are ordered by name. The tooltip of a node
+Child nodes of configurations can only be of type snapshot and are ordered by name. The tooltip of a node
 will provide information on date created and user name:
 
 .. image:: images/tooltip-configuration.png
@@ -59,27 +62,40 @@ A word of caution
 Save-and-restore data is persisted in a central service and is therefore accessible by multiple
 clients. Users should keep in mind that changes (e.g. new or deleted nodes) are not pushed to all clients.
 Caution is therefore advocated when working on the nodes in the tree, in particular when changing the structure by
-deleting or moving nodes.
+copying, deleting or moving nodes.
 
 Drag-n-drop
 -----------
 
-Nodes in the tree can be copied (mouse + modifier key) or moved using drag-n-drop. The following restrictions apply:
-* Only folder and configuration nodes can be copied or moved.
-* Configuration nodes cannot be copied or moved to the root folder node.
-* Target node (i.e. drop target) must be a folder.
+Nodes in the tree can be moved using drag-n-drop. The following restrictions apply:
+
+* Configuration and folder nodes may be moved if target is a folder.
+* Configuration and composite snapshot nodes cannot be moved to the root folder.
+* A move operation on snapshot nodes is supported only if the target is a composite snapshot node. This
+will launch the editor for that composite snapshot. The source nodes are of course not removed from their parent node.
+* Target folder may not contain nodes of same type and name as nodes subject to move.
 
 Checks are performed on the service to enforce the above restrictions. If pre-conditions are not met when the selection
 is dropped, the application will present an error dialog.
 
 Drag-n-drop is disabled if multiple nodes are selected and if:
+
 * Selection contains a combination of folder and configuration nodes. Selected nodes must be of same type.
 * Selection contains nodes with different parent nodes. Selected nodes must have the same parent node.
 
-Once a selection of nodes have been copied or moved successfully, the target folder is refreshed to reflect the change.
+Once a selection of nodes have been moved successfully, the target folder is refreshed to reflect the change.
 
-**NOTE**: Copying a large number of nodes and/or nodes with deep sub-trees is discouraged as this is an "expensive" operation.
-Moving nodes on the other hand is lightweight as only references in the tree structure are updated.
+Copy/paste
+----------
+
+Nodes may be copy/pasted using the context menu. The following restrictions apply:
+
+* Folder nodes cannot be copied.
+* A copy operation of a configuration node will not copy its snapshot child nodes. These must be copied as a separate copy operation.
+* A snapshot node may be pasted into a configuration only if the list of PVs matches.
+* If the target node already contains a node of same type and name, the pasted node(s) will acquire the same base name, plus a suffix like "copy", "copy 2", "copy 3" etc.
+
+For a multi-selection of nodes the same restrictions apply as for a drag-n-drop move operation, see above.
 
 Logging
 -------
@@ -100,6 +116,7 @@ Folder
 Folder nodes can be created from the New Folder option of the folder node context menu:
 
 .. image:: images/context-menu-folder-new-folder.png
+    :width: 30%
 
 Folder names are case-sensitive and must be unique within the same parent folder.
 
@@ -109,6 +126,7 @@ Configuration View
 A new configuration is created from the context menu launched when right-clicking on a folder node in the tree view:
 
 .. image:: images/context-menu-folder-create-configuration.png
+    :width: 30%
 
 This will launch the configuration editor:
 
@@ -127,6 +145,7 @@ To add a very large number of PVs, user should consider the import feature avail
 option in the context menu of a folder node in the tree view:
 
 .. image:: images/context-menu-folder-import-configuration.png
+   :width: 30%
 
 The file format for such a file is::
 
@@ -198,6 +217,7 @@ To create a composite snapshot user must select the New Composite Snapshot conte
 which the composite snapshot will be saved:
 
 .. image:: images/context-menu-folder-new-composite-snapshot.png
+   :width: 30%
 
 This launches the composite snapshot editor:
 
@@ -214,6 +234,12 @@ The composite snapshot can be saved when a case sensitive name and a description
 * The combined list of PV names in the referenced snapshots must not contain duplicates. This is checked for each item dropped into the list when editing a composite snapshot. If duplicates are detected, an error dialog is shown.
 
 * Snapshots and composite snapshots cannot be deleted if referenced in a composite snapshot.
+
+Edit Composite Snapshot using drag-n-drop
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+From the Search And Filter view (see below) user may select snapshots or composite snapshots and then drag-n-drop
+the selection onto an existing composite snapshot in the left-hand side tree view.
 
 
 Restore Snapshot View
@@ -351,6 +377,13 @@ Deleting tags on multiple snapshots
 If user selects multiple snapshot nodes, tags may be deleted on all of the nodes in one single operation. Note however
 that the context menu will only show tags common to all selected nodes.
 
+Tagging from search view
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The search result table of the Search And Filter view also supports a contect menu for the purpose of managing tags:
+
+.. image:: images/search-result-context-menu.png
+
 Snapshot View Context Menu
 --------------------------
 
@@ -362,7 +395,25 @@ The items of this context menu offers actions associated with a PV, which is sim
 other applications. However, user should be aware that the "Data Browser" item will launch the Data Browser app for
 the selected PV *around the point in time defined by the PV timestamp*.
 
+Authentication and Authorization
+--------------------------------
 
+Authorization uses a role-based approach like so:
 
+* Unauthenticated users may read data, i.e. browse the tree and view configurations, snapshots, search and view filters.
+* Role "user":
+    * Create and save configurations
+    * Create and save snapshots
+    * Create and save composite snapshots
+    * Create and save filters
+    * Update and delete objects if user name matches object's user id and:
+        * Object is a snapshot and not referenced in a composite snapshot node
+        * Object is a composite snapshot node
+        * Object is configuration or folder node with no child nodes
+        * Object is a filter
+* Role "superuser": +perform restore operation
+* Role "admin": no restrictions
+
+Roles are defined and managed on the service. Role (group) membership is managed in Active Directory or LDAP.
 
 

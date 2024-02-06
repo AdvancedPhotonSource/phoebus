@@ -17,6 +17,11 @@ import java.util.Optional;
 import java.util.logging.Level;
 import java.util.regex.Pattern;
 
+import javafx.application.Platform;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 import org.phoebus.applications.alarm.AlarmSystem;
 import org.phoebus.applications.alarm.client.AlarmClient;
 import org.phoebus.applications.alarm.model.AlarmTreeItem;
@@ -24,15 +29,18 @@ import org.phoebus.applications.alarm.model.SeverityLevel;
 import org.phoebus.applications.alarm.ui.AlarmContextMenuHelper;
 import org.phoebus.applications.alarm.ui.AlarmUI;
 import org.phoebus.applications.alarm.ui.tree.ConfigureComponentAction;
+import org.phoebus.framework.jobs.Job;
 import org.phoebus.framework.jobs.JobManager;
 import org.phoebus.framework.persistence.Memento;
 import org.phoebus.framework.selection.Selection;
 import org.phoebus.framework.selection.SelectionService;
 import org.phoebus.ui.application.ContextMenuService;
 import org.phoebus.ui.application.SaveSnapshotAction;
+import org.phoebus.ui.dialog.ExceptionDetailsErrorDialog;
 import org.phoebus.ui.javafx.Brightness;
 import org.phoebus.ui.javafx.ClearingTextField;
 import org.phoebus.ui.javafx.ImageCache;
+import org.phoebus.ui.javafx.JFXUtil;
 import org.phoebus.ui.javafx.PrintAction;
 import org.phoebus.ui.javafx.Screenshot;
 import org.phoebus.ui.javafx.ToolbarHelper;
@@ -68,10 +76,6 @@ import javafx.scene.image.ImageView;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
 
@@ -195,34 +199,34 @@ public class AlarmTableUI extends BorderPane
         }
 
         @Override
-        protected void updateItem(final SeverityLevel item, final boolean empty)
+        protected void updateItem(final SeverityLevel severityLevel, final boolean empty)
         {
-            super.updateItem(item, empty);
+            super.updateItem(severityLevel, empty);
 
-            if (empty  ||  item == null)
+            if (empty  ||  severityLevel == null)
             {
+                setStyle("-fx-text-fill: black;  -fx-background-color: transparent");
                 setText("");
-                setBackground(null);
-                setTextFill(Color.BLACK);
             }
             else
             {
-                setText(item.toString());
+                setText(severityLevel.toString());
                 if (AlarmSystem.alarm_table_color_legacy_background)
                 {
-                    final Background bg = AlarmUI.getLegacyTableBackground(item);
-                    setBackground(bg);
-                    final Paint p = bg.getFills().get(0).getFill();
-                    if (p instanceof Color &&
-                        Brightness.of((Color) p) < Brightness.BRIGHT_THRESHOLD)
-                        setTextFill(Color.WHITE);
-                    else
-                        setTextFill(Color.BLACK);
+                    Color legacyBackgroundColor = AlarmUI.getLegacyTableBackground(severityLevel);
+                    Color legacyTextColor;
+                    if (Brightness.of(legacyBackgroundColor) < Brightness.BRIGHT_THRESHOLD) {
+                        legacyTextColor = Color.WHITE;
+                    }
+                    else {
+                        legacyTextColor = Color.BLACK;
+                    }
+                    setStyle("-fx-alignment: center; -fx-border-color: transparent; -fx-border-width: 2 0 2 0; -fx-background-insets: 2 0 2 0; -fx-text-fill: " + JFXUtil.webRGB(legacyTextColor) + ";  -fx-background-color: " + JFXUtil.webRGB(legacyBackgroundColor));
+
                 }
                 else
                 {
-                    setBackground(AlarmUI.getBackground(item));
-                    setTextFill(AlarmUI.getColor(item));
+                    setStyle("-fx-alignment: center; -fx-border-color: transparent; -fx-border-width: 2 0 2 0; -fx-background-insets: 2 0 2 0; -fx-text-fill: " + JFXUtil.webRGB(AlarmUI.getColor(severityLevel)) + ";  -fx-background-color: " + JFXUtil.webRGB(AlarmUI.getBackgroundColor(severityLevel)));
                 }
             }
         }
@@ -288,7 +292,17 @@ public class AlarmTableUI extends BorderPane
     private ToolBar createToolbar()
     {
         setMaintenanceMode(false);
-        server_mode.setOnAction(event ->  client.setMode(! client.isMaintenanceMode()));
+        server_mode.setOnAction(event ->  {
+            JobManager.schedule(client.isMaintenanceMode() ? "Disable maintenance mode" : "Enable maintenance mode",
+                    monitor -> {
+                        try {
+                            client.setMode(! client.isMaintenanceMode());
+                        } catch (Exception e) {
+                            Platform.runLater(() -> ExceptionDetailsErrorDialog.openError(e.getMessage(), e));
+                        }
+                    });
+
+        });
 
         // Could 'bind',
         //   server_mode.disableProperty().bind(new SimpleBooleanProperty(!AlarmUI.mayModifyMode(client)));
@@ -298,7 +312,15 @@ public class AlarmTableUI extends BorderPane
             server_mode.setDisable(true);
 
         setDisableNotify(false);
-        server_notify.setOnAction(event ->  client.setNotify(! client.isDisableNotify()));
+        server_notify.setOnAction(event ->  {
+            JobManager.schedule(client.isDisableNotify() ? "Enable alarm notification" : "Disable alarm notification", monitor -> {
+                try {
+                    client.setNotify(! client.isDisableNotify());
+                } catch (Exception e) {
+                    Platform.runLater(() -> ExceptionDetailsErrorDialog.openError(e.getMessage(), e));
+                }
+            });
+        });
         if (!AlarmUI.mayDisableNotify(client))
             server_notify.setDisable(true);
 

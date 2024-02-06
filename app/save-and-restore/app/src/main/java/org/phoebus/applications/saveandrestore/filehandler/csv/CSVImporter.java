@@ -70,8 +70,8 @@ import org.epics.vtype.VShortArray;
 import org.epics.vtype.VString;
 import org.epics.vtype.VStringArray;
 import org.epics.vtype.VType;
+import org.phoebus.applications.saveandrestore.Messages;
 import org.phoebus.applications.saveandrestore.SaveAndRestoreApplication;
-import org.phoebus.applications.saveandrestore.common.VDisconnectedData;
 import org.phoebus.applications.saveandrestore.datamigration.git.FileUtilities;
 import org.phoebus.applications.saveandrestore.model.ConfigPv;
 import org.phoebus.applications.saveandrestore.model.Node;
@@ -80,7 +80,9 @@ import org.phoebus.applications.saveandrestore.model.Snapshot;
 import org.phoebus.applications.saveandrestore.model.SnapshotData;
 import org.phoebus.applications.saveandrestore.model.SnapshotItem;
 import org.phoebus.applications.saveandrestore.ui.SaveAndRestoreService;
+import org.phoebus.core.vtypes.VDisconnectedData;
 import org.phoebus.applications.saveandrestore.ui.configuration.ConfigurationFromSelectionController;
+import org.phoebus.framework.nls.NLS;
 
 import java.io.File;
 import java.io.IOException;
@@ -92,6 +94,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ResourceBundle;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -146,7 +149,9 @@ public class CSVImporter extends CSVCommon {
             csvParser.setDescription(parentOfImport.getDescription() + System.lineSeparator() + System.lineSeparator() + "Description from importing:" + System.lineSeparator() + csvParser.getDescription());
         }
 
+        ResourceBundle resourceBundle = NLS.getMessages(Messages.class);
         FXMLLoader loader = new FXMLLoader();
+        loader.setResources(resourceBundle);
         loader.setLocation(SaveAndRestoreApplication.class.getResource("ui/configuration/ConfigurationFromSelection.fxml"));
         Stage dialog = new Stage();
         dialog.setTitle("Import Configuration");
@@ -159,7 +164,8 @@ public class CSVImporter extends CSVCommon {
         }
 
         final ConfigurationFromSelectionController controller = loader.getController();
-        controller.disableConfigurationSelectionInBrowsing();
+        controller.
+                disableConfigurationSelectionInBrowsing();
         controller.setData(parentOfImport, csvParser.getSavesetName(), csvParser.getDescription(), csvParser.getEntries());
         dialog.show();
     }
@@ -222,7 +228,9 @@ public class CSVImporter extends CSVCommon {
             Optional<ButtonType> response = alert.showAndWait();
 
             if (response.isPresent() && response.get().equals(ButtonType.OK)) {
+                ResourceBundle resourceBundle = NLS.getMessages(Messages.class);
                 FXMLLoader loader = new FXMLLoader();
+                loader.setResources(resourceBundle);
                 loader.setLocation(SaveAndRestoreApplication.class.getResource("ui/configuration/ConfigurationFromSelection.fxml"));
                 Stage dialog = new Stage();
                 dialog.setTitle("Import SnapshotData");
@@ -286,7 +294,7 @@ public class CSVImporter extends CSVCommon {
         Snapshot snapshot = new Snapshot();
         snapshot.setSnapshotNode(snapshotNode);
         SnapshotData snapshotData = new SnapshotData();
-        snapshotData.setSnasphotItems(snapshotItems);
+        snapshotData.setSnapshotItems(snapshotItems);
         snapshot.setSnapshotData(snapshotData);
 
         snapshot = saveAndRestoreService.saveSnapshot(parentOfImport, snapshot);

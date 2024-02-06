@@ -18,9 +18,6 @@
 
 package org.phoebus.service.saveandrestore.persistence.dao;
 
-import co.elastic.clients.elasticsearch.core.SearchRequest;
-import co.elastic.clients.elasticsearch.core.SearchResponse;
-import co.elastic.clients.elasticsearch.core.search.Hit;
 import org.phoebus.applications.saveandrestore.model.CompositeSnapshot;
 import org.phoebus.applications.saveandrestore.model.CompositeSnapshotData;
 import org.phoebus.applications.saveandrestore.model.Configuration;
@@ -33,14 +30,9 @@ import org.phoebus.applications.saveandrestore.model.Tag;
 import org.phoebus.applications.saveandrestore.model.TagData;
 import org.phoebus.applications.saveandrestore.model.search.Filter;
 import org.phoebus.applications.saveandrestore.model.search.SearchResult;
-import org.springframework.http.HttpStatus;
 import org.springframework.util.MultiValueMap;
-import org.springframework.web.server.ResponseStatusException;
 
-import java.io.IOException;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.stream.Collectors;
 
 /**
  * @author georgweiss Created 11 Mar 2019
@@ -71,13 +63,19 @@ public interface NodeDAO {
     List<Node> getNodes(List<String> uniqueNodeIds);
 
     /**
-     * Deletes a {@link Node}, folder or configuration. If the node is a folder, the
-     * entire sub-tree of the folder is deleted, including the snapshots associated
-     * with configurations in the sub-tree.
+     * This is deprecated, use {@link #deleteNodes} instead.
      *
      * @param nodeId The unique id of the node to delete.
      */
+    @Deprecated
     void deleteNode(String nodeId);
+
+    /**
+     * Checks that each of the node ids passed to this method exist, and that none of them
+     * is the root node. If check passes all nodes are deleted.
+     * @param nodeIds List of (existing) node ids.
+     */
+    void deleteNodes(List<String> nodeIds);
 
     /**
      * Creates a new node in the tree.
@@ -104,8 +102,8 @@ public interface NodeDAO {
     /**
      * Copies {@link Node}s (folder or config) to some parent node.
      *
-     * @param nodeIds  List of unique node ids subject to move
-     * @param targetId Unique id of target node
+     * @param nodeIds  Non-null and non-empty list of unique node ids subject to move
+     * @param targetId Non-null and non-empty unique id of target node
      * @param userName The (account) name of the user performing the operation.
      * @return The target {@link Node} object that is the new parent of the moved source {@link Node}
      */
@@ -136,7 +134,16 @@ public interface NodeDAO {
      * @param snapshot The {@link Snapshot} data.
      * @return The persisted {@link Snapshot} data.
      */
-    Snapshot saveSnapshot(String parentNodeId, Snapshot snapshot);
+    Snapshot createSnapshot(String parentNodeId, Snapshot snapshot);
+
+    /**
+     * Updates a {@link Snapshot} with respect to name, description/comment. No other properties of the
+     * node can be modified, but last updated date will be set accordingly.
+     *
+     * @param snapshot The {@link Snapshot} subject to update.
+     * @return The {@link Snapshot} object as read from the persistence implementation.
+     */
+    Snapshot updateSnapshot(Snapshot snapshot);
 
     /**
      * Updates a {@link Node} with respect to name, description/comment and tags. No other properties of the
@@ -215,14 +222,6 @@ public interface NodeDAO {
      */
     SnapshotData getSnapshotData(String uniqueId);
 
-    /**
-     * Determines of a move or copy operation is allowed.
-     * @param nodesToMove List of {@link Node}s subject to move/copy.
-     * @param targetNode The target {@link Node} of the move/copy operation
-     * @return <code>true</code> if the list of {@link Node}s can be moved/copied,
-     * otherwise <code>false</code>.
-     */
-    boolean isMoveOrCopyAllowed(List<Node> nodesToMove, Node targetNode);
 
     /**
      * Finds the {@link Node} corresponding to the parent of last element in the split path. For instance, given a
@@ -316,7 +315,7 @@ public interface NodeDAO {
 
     /**
      * Deletes a {@link Filter} based on its name.
-     * @param name
+     * @param name Unique name of the {@link Filter}
      */
     void deleteFilter(String name);
 

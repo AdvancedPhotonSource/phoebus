@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.phoebus</groupId>
   <artifactId>parent</artifactId>
-  <version>4.7.2-SNAPSHOT</version>
+  <version>4.7.4-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>phoebus (parent)</name>
   <description>A framework and set of tools to monitor and operate large scale control systems, such as the ones in the accelerator community.</description>
@@ -41,6 +41,12 @@
       <organization>European Spallation Source</organization>
       <organizationUrl>https://github.com/georgweiss</organizationUrl>
     </developer>
+    <developer>
+      <name>Katy Saintin</name>
+      <email>katy.saintin@cea.fr</email>
+      <organization>CEA Paris-Saclay</organization>
+      <organizationUrl>https://github.com/katysaintin</organizationUrl>
+    </developer>
   </developers>
 
   <distributionManagement>
@@ -58,13 +64,14 @@
   </distributionManagement>
 
   <properties>
-    <epics.version>7.0.8</epics.version>
-    <vtype.version>1.0.5</vtype.version>
+    <project.build.outputTimestamp>2024-01-10T19:23:58Z</project.build.outputTimestamp>
+    <epics.version>7.0.10</epics.version>
+    <vtype.version>1.0.7</vtype.version>
     <openjfx.version>19</openjfx.version>
     <jackson.version>2.12.3</jackson.version>
     <batik.version>1.14</batik.version>
     <mockito.version>2.23.4</mockito.version>
-    <postgresql.driver.version>42.2.9</postgresql.driver.version>
+    <postgresql.driver.version>42.6.0</postgresql.driver.version>
     <!-- When connections to older MySQL server fail because of CLIENT_PLUGIN_AUTH, downgrade to 5.1.45 -->
     <mysql.version>8.0.30</mysql.version>
     <jetty.version>9.4.30.v20200611</jetty.version>
@@ -75,7 +82,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <skipITTests>true</skipITTests>
-    <guava.version>31.0.1-jre</guava.version>
+    <guava.version>32.1.1-jre</guava.version>
     <log4j-to-slf4j.version>2.17.1</log4j-to-slf4j.version>
     <derby.version>10.16.1.1</derby.version>
     <jython.version>2.7.3</jython.version>
@@ -127,7 +134,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-javadoc-plugin</artifactId>
-        <version>3.1.1</version>
+        <version>3.2.0</version>
         <configuration>
           <!-- Only document 'public' code -->
           <show>public</show>
@@ -136,12 +143,19 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-release-plugin</artifactId>
-        <version>3.0.0-M5</version>
+        <version>3.0.1</version>
         <configuration>
           <tagNameFormat>v@{project.version}</tagNameFormat>
           <autoVersionSubmodules>true</autoVersionSubmodules>
           <releaseProfiles>releases</releaseProfiles>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <!-- Use a version > 3.2.0 by default for reproducible builds.
+          See: https://maven.apache.org/guides/mini/guide-reproducible-builds.html -->
+        <version>3.3.0</version>
       </plugin>
     </plugins>
   </build>

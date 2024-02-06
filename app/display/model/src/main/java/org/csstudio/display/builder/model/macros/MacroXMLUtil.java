@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015-2016 Oak Ridge National Laboratory.
+ * Copyright (c) 2015-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,6 +11,8 @@ import static org.csstudio.display.builder.model.ModelPlugin.logger;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Level;
 
 import javax.xml.stream.XMLOutputFactory;
@@ -34,11 +36,25 @@ public class MacroXMLUtil
      */
     public static void writeMacros(final XMLStreamWriter writer, final Macros macros) throws Exception
     {
-        for (String name : macros.getNames())
+        try
         {
-            writer.writeStartElement(name);
-            writer.writeCharacters(macros.getValue(name));
-            writer.writeEndElement();
+            macros.forEachSpec((name, value) ->
+            {
+                try
+                {
+                    writer.writeStartElement(name);
+                    writer.writeCharacters(value);
+                    writer.writeEndElement();
+                }
+                catch (Exception ex)
+                {   // Abort iterator via Error...
+                    throw new Error(ex);
+                }
+            });
+        }
+        catch (Error ex)
+        {   // .. then pass original exception back up
+            throw (Exception) ex.getCause();
         }
     }
 
@@ -103,5 +119,18 @@ public class MacroXMLUtil
             logger.log(Level.WARNING, "Cannot serialize macros " + macros, ex);
         }
         return xml.toString();
+    }
+
+    /** @deprecated Use macros.getValue("M") or macros.getNames()
+     *  @param macros Macros to represent as Map
+     *  @return Map representation for macros
+     */
+    public static Map<String, String> toMap(final Macros macros)
+    {
+        Map<String, String> readMacroMap = new HashMap<>();
+        macros.forEach((s, s2) -> {
+            readMacroMap.put(s,s2);
+        });
+        return readMacroMap;
     }
 }

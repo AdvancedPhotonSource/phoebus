@@ -16,7 +16,6 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
-import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -42,11 +41,19 @@ import javafx.util.StringConverter;
 import org.phoebus.framework.jobs.JobManager;
 import org.phoebus.logbook.LogClient;
 import org.phoebus.logbook.LogEntry;
+import org.phoebus.logbook.LogService;
 import org.phoebus.logbook.LogbookException;
+import org.phoebus.logbook.LogbookPreferences;
 import org.phoebus.logbook.SearchResult;
 import org.phoebus.logbook.olog.ui.query.OlogQuery;
 import org.phoebus.logbook.olog.ui.query.OlogQueryManager;
+import org.phoebus.logbook.olog.ui.write.LogEntryEditorStage;
+import org.phoebus.logbook.olog.ui.write.LogEntryUpdateStage;
 import org.phoebus.olog.es.api.model.LogGroupProperty;
+import org.phoebus.olog.es.api.model.OlogLog;
+import org.phoebus.security.store.SecureStore;
+import org.phoebus.security.tokens.AuthenticationScope;
+import org.phoebus.security.tokens.ScopedAuthenticationToken;
 import org.phoebus.ui.dialog.DialogHelper;
 import org.phoebus.ui.dialog.ExceptionDetailsErrorDialog;
 
@@ -66,8 +73,6 @@ import java.util.stream.Collectors;
  */
 public class LogEntryTableViewController extends LogbookSearchController {
 
-    @FXML
-    private Button resize;
     @FXML
     private ComboBox<OlogQuery> query;
 
@@ -96,6 +101,9 @@ public class LogEntryTableViewController extends LogbookSearchController {
 
     @FXML
     private TextField pageSizeTextField;
+
+    @FXML
+    private Label openAdvancedSearchLabel;
     // Model
     private SearchResult searchResult;
     /**
@@ -105,6 +113,8 @@ public class LogEntryTableViewController extends LogbookSearchController {
     private final Logger logger = Logger.getLogger(LogEntryTableViewController.class.getName());
 
     private final SimpleBooleanProperty showDetails = new SimpleBooleanProperty();
+
+    private final SimpleBooleanProperty advancedSearchVisibile = new SimpleBooleanProperty(false);
 
     /**
      * Constructor.
@@ -123,6 +133,7 @@ public class LogEntryTableViewController extends LogbookSearchController {
     private final SimpleIntegerProperty pageCountProperty = new SimpleIntegerProperty(0);
     private final OlogQueryManager ologQueryManager;
     private final ObservableList<OlogQuery> ologQueries = FXCollections.observableArrayList();
+    private final SimpleBooleanProperty userHasSignedIn = new SimpleBooleanProperty(false);
 
     private final SearchParameters searchParameters;
 
@@ -145,7 +156,7 @@ public class LogEntryTableViewController extends LogbookSearchController {
 
         groupSelectedEntries.disableProperty()
                 .bind(Bindings.createBooleanBinding(() ->
-                        selectedLogEntries.size() < 2, selectedLogEntries));
+                        selectedLogEntries.size() < 2 || userHasSignedIn.not().get(), selectedLogEntries, userHasSignedIn));
         ContextMenu contextMenu = new ContextMenu();
 
         MenuItem menuItemShowHideAll = new MenuItem(Messages.ShowHideDetails);
@@ -155,7 +166,28 @@ public class LogEntryTableViewController extends LogbookSearchController {
             tableView.getItems().forEach(item -> item.setShowDetails(!item.isShowDetails().get()));
         });
 
-        contextMenu.getItems().addAll(groupSelectedEntries, menuItemShowHideAll);
+        MenuItem menuItemNewLogEntry = new MenuItem(Messages.NewLogEntry);
+        menuItemNewLogEntry.acceleratorProperty().setValue(new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN));
+        menuItemNewLogEntry.setOnAction(ae -> new LogEntryEditorStage(new OlogLog(), null, null).show());
+
+        MenuItem menuItemUpdateLogEntry = new MenuItem(Messages.UpdateLogEntry);
+        menuItemUpdateLogEntry.visibleProperty().bind(Bindings.createBooleanBinding(()-> selectedLogEntries.size() == 1, selectedLogEntries));
+        menuItemUpdateLogEntry.acceleratorProperty().setValue(new KeyCodeCombination(KeyCode.U, KeyCombination.CONTROL_DOWN));
+        menuItemUpdateLogEntry.setOnAction(ae -> new LogEntryUpdateStage(selectedLogEntries.get(0), null).show());
+
+        contextMenu.getItems().addAll(groupSelectedEntries, menuItemShowHideAll, menuItemNewLogEntry);
+        if (LogbookUIPreferences.log_entry_update_support) {
+            contextMenu.getItems().add(menuItemUpdateLogEntry);
+        }
+        contextMenu.setOnShowing(e -> {
+            try {
+                SecureStore store = new SecureStore();
+                ScopedAuthenticationToken scopedAuthenticationToken = store.getScopedAuthenticationToken(AuthenticationScope.LOGBOOK);
+                userHasSignedIn.set(scopedAuthenticationToken != null);
+            } catch (Exception ex) {
+                logger.log(Level.WARNING, "Secure Store file not found.", ex);
+            }
+        });
 
         tableView.setContextMenu(contextMenu);
 
@@ -163,7 +195,7 @@ public class LogEntryTableViewController extends LogbookSearchController {
         tableView.getColumns().clear();
         tableView.setEditable(false);
         tableView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
-            if(newValue != null && tableView.getSelectionModel().getSelectedItems().size() == 1){
+            if (newValue != null && tableView.getSelectionModel().getSelectedItems().size() == 1) {
                 selectedLogEntry = newValue.getLogEntry();
                 logEntryDisplayController.setLogEntry(newValue.getLogEntry());
             }
@@ -177,7 +209,7 @@ public class LogEntryTableViewController extends LogbookSearchController {
 
         descriptionCol = new TableColumn<>();
         descriptionCol.setMaxWidth(1f * Integer.MAX_VALUE * 100);
-        descriptionCol.setCellValueFactory(col -> new SimpleObjectProperty(col.getValue()));
+        descriptionCol.setCellValueFactory(col -> new SimpleObjectProperty<>(col.getValue()));
         descriptionCol.setCellFactory(col -> new TableCell<>() {
             private final Node graphic;
             private final PseudoClass childlessTopLevel =
@@ -253,6 +285,13 @@ public class LogEntryTableViewController extends LogbookSearchController {
         query.getSelectionModel().select(ologQueries.get(0));
         searchParameters.setQuery(ologQueries.get(0).getQuery());
 
+        openAdvancedSearchLabel.setOnMouseClicked(e -> resize());
+
+        openAdvancedSearchLabel.textProperty()
+                .bind(Bindings.createStringBinding(() -> advancedSearchVisibile.get() ?
+                                Messages.AdvancedSearchHide : Messages.AdvancedSearchOpen,
+                        advancedSearchVisibile));
+
         search();
     }
 
@@ -263,33 +302,31 @@ public class LogEntryTableViewController extends LogbookSearchController {
     @FXML
     public void resize() {
         if (!moving.compareAndExchangeAcquire(false, true)) {
-            if (resize.getText().equals("<")) {
+            Duration cycleDuration = Duration.millis(400);
+            Timeline timeline;
+            if (advancedSearchVisibile.get()) {
                 query.disableProperty().set(false);
-                Duration cycleDuration = Duration.millis(400);
                 KeyValue kv = new KeyValue(advancedSearchViewController.getPane().minWidthProperty(), 0);
                 KeyValue kv2 = new KeyValue(advancedSearchViewController.getPane().maxWidthProperty(), 0);
-                Timeline timeline = new Timeline(new KeyFrame(cycleDuration, kv, kv2));
-                timeline.play();
+                timeline = new Timeline(new KeyFrame(cycleDuration, kv, kv2));
                 timeline.setOnFinished(event -> {
-                    resize.setText(">");
+                    advancedSearchVisibile.set(false);
                     moving.set(false);
-                    //advancedSearchViewController.updateSearchParametersFromInput();
                     search();
                 });
             } else {
                 searchParameters.setQuery(query.getEditor().getText());
-                Duration cycleDuration = Duration.millis(400);
                 double width = ViewSearchPane.getWidth() / 2.5;
                 KeyValue kv = new KeyValue(advancedSearchViewController.getPane().minWidthProperty(), width);
                 KeyValue kv2 = new KeyValue(advancedSearchViewController.getPane().prefWidthProperty(), width);
-                Timeline timeline = new Timeline(new KeyFrame(cycleDuration, kv, kv2));
-                timeline.play();
+                timeline = new Timeline(new KeyFrame(cycleDuration, kv, kv2));
                 timeline.setOnFinished(event -> {
-                    resize.setText("<");
+                    advancedSearchVisibile.set(true);
                     moving.set(false);
                     query.disableProperty().set(true);
                 });
             }
+            timeline.play();
         }
     }
 
@@ -366,9 +403,9 @@ public class LogEntryTableViewController extends LogbookSearchController {
             tableView.setItems(logsList);
             // This will ensure that if an entry was selected, it stays selected after the list has been
             // updated from the search result, even if it is empty.
-            if(selectedLogEntry != null){
-                for(TableViewListItem item : tableView.getItems()){
-                    if(item.getLogEntry().getId().equals(selectedLogEntry.getId())){
+            if (selectedLogEntry != null) {
+                for (TableViewListItem item : tableView.getItems()) {
+                    if (item.getLogEntry().getId().equals(selectedLogEntry.getId())) {
                         Platform.runLater(() -> tableView.getSelectionModel().select(item));
                         break;
                     }
@@ -382,7 +419,8 @@ public class LogEntryTableViewController extends LogbookSearchController {
                 selectedLogEntries.stream().map(LogEntry::getId).collect(Collectors.toList());
         JobManager.schedule("Group log entries", monitor -> {
             try {
-                client.groupLogEntries(logEntryIds);
+                LogClient logClient = LogService.getInstance().getLogFactories().get(LogbookPreferences.logbook_factory).getLogClient();
+                logClient.groupLogEntries(logEntryIds);
                 search();
             } catch (LogbookException e) {
                 logger.log(Level.INFO, "Unable to create log entry group from selection");
@@ -459,7 +497,7 @@ public class LogEntryTableViewController extends LogbookSearchController {
 
     /**
      * Wrapper class for a {@link LogEntry} and a flag indicating whether details of the
-     * log entry meta data should be rendered in the list view.
+     * log entry meta-data should be rendered in the list view.
      */
     public static class TableViewListItem {
         private final SimpleBooleanProperty showDetails = new SimpleBooleanProperty(true);
@@ -483,15 +521,26 @@ public class LogEntryTableViewController extends LogbookSearchController {
         }
     }
 
-    public void setShowDetails(boolean show){
+    public void setShowDetails(boolean show) {
         showDetails.set(show);
     }
 
-    public boolean getShowDetails(){
+    public boolean getShowDetails() {
         return showDetails.get();
     }
 
-    public void showHelp(){
+    public void showHelp() {
         new HelpViewer(LogbookUIPreferences.search_help).show();
+    }
+
+    /**
+     * Handler for a {@link LogEntry} change, new or updated.
+     * A search is triggered to make sure the result list reflects the change, and
+     * the detail view controller is called to refresh, if applicable.
+     * @param logEntry
+     */
+    public void logEntryChanged(LogEntry logEntry){
+        search();
+        logEntryDisplayController.updateLogEntry(logEntry);
     }
 }

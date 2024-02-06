@@ -18,29 +18,23 @@
  */
 package org.phoebus.applications.saveandrestore.ui.configuration;
 
-import javafx.beans.property.SimpleStringProperty;
+import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
-import javafx.geometry.Insets;
-import javafx.scene.control.Label;
-import javafx.scene.control.Tab;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.HBox;
 import org.phoebus.applications.saveandrestore.Messages;
 import org.phoebus.applications.saveandrestore.model.Node;
 import org.phoebus.applications.saveandrestore.ui.ImageRepository;
-import org.phoebus.applications.saveandrestore.ui.NodeChangedListener;
 import org.phoebus.applications.saveandrestore.ui.SaveAndRestoreService;
+import org.phoebus.applications.saveandrestore.ui.SaveAndRestoreTab;
 import org.phoebus.framework.nls.NLS;
+import org.phoebus.security.tokens.ScopedAuthenticationToken;
 
+import java.util.List;
 import java.util.ResourceBundle;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class ConfigurationTab extends Tab implements NodeChangedListener {
-
-    private ConfigurationController configurationController;
-
-    private SimpleStringProperty tabTitleProperty = new SimpleStringProperty(Messages.contextMenuNewConfiguration);
+public class ConfigurationTab extends SaveAndRestoreTab {
 
     public ConfigurationTab() {
         configure();
@@ -65,8 +59,8 @@ public class ConfigurationTab extends Tab implements NodeChangedListener {
                 return null;
             });
             setContent(loader.load());
-            configurationController = loader.getController();
-            setGraphic(getTabGraphic());
+            controller = loader.getController();
+            setGraphic(new ImageView(ImageRepository.CONFIGURATION));
         } catch (Exception e) {
             Logger.getLogger(ConfigurationTab.class.getName())
                     .log(Level.SEVERE, "Failed to load fxml", e);
@@ -74,7 +68,7 @@ public class ConfigurationTab extends Tab implements NodeChangedListener {
         }
 
         setOnCloseRequest(event -> {
-            if (!configurationController.handleConfigurationTabClosed()) {
+            if (!((ConfigurationController)controller).handleConfigurationTabClosed()) {
                 event.consume();
             } else {
                 SaveAndRestoreService.getInstance().removeNodeChangeListener(this);
@@ -91,30 +85,19 @@ public class ConfigurationTab extends Tab implements NodeChangedListener {
      */
     public void editConfiguration(Node configurationNode) {
         setId(configurationNode.getUniqueId());
-        tabTitleProperty.set(configurationNode.getName());
-        configurationController.loadConfiguration(configurationNode);
+        textProperty().set(configurationNode.getName());
+        ((ConfigurationController)controller).loadConfiguration(configurationNode);
     }
 
     public void configureForNewConfiguration(Node parentNode) {
-        configurationController.newConfiguration(parentNode);
-    }
-
-    private javafx.scene.Node getTabGraphic() {
-        HBox container = new HBox();
-        ImageView imageView = new ImageView(ImageRepository.CONFIGURATION);
-        Label label = new Label("");
-        label.textProperty().bindBidirectional(tabTitleProperty);
-        HBox.setMargin(label, new Insets(1, 5, 0, 3));
-        HBox.setMargin(imageView, new Insets(1, 2, 0, 3));
-        container.getChildren().addAll(imageView, label);
-
-        return container;
+        textProperty().set(Messages.contextMenuNewConfiguration);
+        ((ConfigurationController)controller).newConfiguration(parentNode);
     }
 
     @Override
     public void nodeChanged(Node node) {
         if (node.getUniqueId().equals(getId())) {
-            tabTitleProperty.set(node.getName());
+            textProperty().set(node.getName());
         }
     }
 
@@ -124,15 +107,14 @@ public class ConfigurationTab extends Tab implements NodeChangedListener {
      * @param tabTitle The wanted tab title.
      */
     public void updateTabTitle(String tabTitle) {
-        tabTitleProperty.set(tabTitle);
+        Platform.runLater(() -> textProperty().set(tabTitle));
     }
 
-    public void annotateDirty(boolean dirty){
-        String tabTitle = tabTitleProperty.get();
-        if(dirty){
+    public void annotateDirty(boolean dirty) {
+        String tabTitle = textProperty().get();
+        if (dirty && !tabTitle.contains("*")) {
             updateTabTitle("* " + tabTitle);
-        }
-        else{
+        } else if(!dirty){
             updateTabTitle(tabTitle.substring(2));
         }
     }

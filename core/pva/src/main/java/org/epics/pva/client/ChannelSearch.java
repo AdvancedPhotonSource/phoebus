@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Oak Ridge National Laboratory.
+ * Copyright (c) 2019-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -21,7 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.logging.Level;
 
 import org.epics.pva.PVASettings;
@@ -76,6 +76,9 @@ class ChannelSearch
     /** Minimum search for a channel is ASAP, then incrementing by 1 */
     private static final int MIN_SEARCH_PERIOD = 0;
 
+    /** Seconds to delay to start a search "soon", not right now */
+    private static final int SEARCH_SOON_DELAY = 5;
+
     /** Maximum and eternal search period is every 30 sec */
     private static final int MAX_SEARCH_PERIOD = 30;
 
@@ -117,7 +120,7 @@ class ChannelSearch
     /** Search buckets
      *
      *  <p>The {@link #current_search_bucket} selects the list
-     *  of channels to be searched by {@link #runSeaches()},
+     *  of channels to be searched by {@link #runSearches()},
      *  which runs roughly once per second, each time moving to
      *  the next search bucket in a ring buffer fashion.
      *
@@ -153,7 +156,8 @@ class ChannelSearch
 
     private final ClientUDPHandler udp;
 
-    private final Function<InetSocketAddress, ClientTCPHandler> tcp_provider;
+    /** Create ClientTCPHandler from IP address and 'tls' flag */
+    private final BiFunction<InetSocketAddress, Boolean, ClientTCPHandler> tcp_provider;
 
     /** Buffer for assembling search messages */
     private final ByteBuffer send_buffer = ByteBuffer.allocate(PVASettings.MAX_UDP_UNFRAGMENTED_SEND);
@@ -166,9 +170,16 @@ class ChannelSearch
                                     b_or_mcast_search_addresses = new ArrayList<>(),
                                     name_server_addresses = new ArrayList<>();
 
+    /** Create channel searcher
+     *  @param udp UDP handler
+     *  @param udp_addresses UDP addresses to search
+     *  @param tcp_provider Function that creates ClientTCPHandler for IP address and 'tls' flag
+     *  @param name_server_addresses TCP addresses to search
+     *  @throws Exception on error
+     */
     public ChannelSearch(final ClientUDPHandler udp,
                          final List<AddressInfo> udp_addresses,
-                         final Function<InetSocketAddress, ClientTCPHandler> tcp_provider,
+                         final BiFunction<InetSocketAddress, Boolean, ClientTCPHandler> tcp_provider,
                          final List<AddressInfo> name_server_addresses) throws Exception
     {
         this.udp = udp;
@@ -188,6 +199,10 @@ class ChannelSearch
         // while multicast and broadcast messages are not.
         for (AddressInfo addr : udp_addresses)
         {
+            if(addr.getAddress().getAddress() == null){ // E.g. address unreachable
+                logger.log(Level.CONFIG, "Skipping unreachable address " + addr.getAddress());
+                continue;
+            }
             // Trouble is, how do you recognize a unicast address?
             if (addr.getAddress().getAddress().isMulticastAddress())
             {   // Multicast -> Certainly no unicast!
@@ -229,7 +244,7 @@ class ChannelSearch
      */
     public void register(final PVAChannel channel, final boolean now)
     {
-        logger.log(Level.FINE, () -> "Register search for " + channel);
+        logger.log(Level.FINE, () -> "Register search for " + channel + (now ? " now" : " soon"));
 
         final ClientChannelState old = channel.setState(ClientChannelState.SEARCHING);
         if (old == ClientChannelState.SEARCHING)
@@ -239,8 +254,14 @@ class ChannelSearch
 
         synchronized (search_buckets)
         {
-            search_buckets.get(current_search_bucket.get()).add(sc);
+            int bucket = current_search_bucket.get();
+            if (!now)
+                bucket = (bucket + SEARCH_SOON_DELAY)  % search_buckets.size();
+            search_buckets.get(bucket).add(sc);
         }
+        // Jumpstart search instead of waiting up to ~1 second for current bucket to be handled
+        if (now)
+            timer.execute(this::runSearches);
     }
 
     /** Stop searching for channel
@@ -307,6 +328,7 @@ class ChannelSearch
             // Determine current search bucket
             final int current = current_search_bucket.getAndUpdate(i -> (i + 1) % search_buckets.size());
             final LinkedList<SearchedChannel> bucket = search_buckets.get(current);
+            logger.log(Level.FINEST, () -> "Search bucket " + current);
 
             // Remove searched channels from the current bucket
             SearchedChannel sc;
@@ -389,13 +411,15 @@ class ChannelSearch
     /** Issue a PVA server list request */
     public void list()
     {
+        final boolean tls = !PVASettings.EPICS_PVA_TLS_KEYCHAIN.isBlank();
+
         // Search is invoked for new SearchedChannel(channel, now)
         // as well as by regular, timed search.
         // Lock the send buffer to avoid concurrent use.
         synchronized (send_buffer)
         {
             logger.log(Level.FINE, "List Request");
-            sendSearch(0, null);
+            sendSearch(0, null, tls);
         }
     }
 
@@ -404,10 +428,16 @@ class ChannelSearch
      */
     private void search(final Collection<SearchRequest.Channel> channels)
     {
+        // Do we support TLS? This will be encoded in the search requests
+        // to tell server if we can support TLS?
+        final boolean tls = !PVASettings.EPICS_PVA_TLS_KEYCHAIN.isBlank();
+
         // Search via TCP
         for (AddressInfo name_server : name_server_addresses)
         {
-            final ClientTCPHandler tcp = tcp_provider.apply(name_server.getAddress());
+            // For search via TCP, do we use plain TCP or do we send the search itself via TLS?
+            // This is configured in EPICS_PVA_NAME_SERVERS via prefix pvas://
+            final ClientTCPHandler tcp = tcp_provider.apply(name_server.getAddress(), name_server.isTLS());
 
             // In case of connection errors (TCP connection blocked by firewall),
             // tcp will be null
@@ -425,7 +455,7 @@ class ChannelSearch
                     // Use 'any' reply address since reply will be via this TCP socket
                     final InetSocketAddress response_address = new InetSocketAddress(0);
 
-                    SearchRequest.encode(true, seq, channels, response_address , buffer);
+                    SearchRequest.encode(true, seq, channels, response_address, tls , buffer);
                 };
                 tcp.submit(search_request);
             }
@@ -444,19 +474,23 @@ class ChannelSearch
             // match up duplicate packets and allows debugging bucket usage
             final int seq = current_search_bucket.get();
             logger.log(Level.FINE, () -> "UDP Search Request #" + seq + " for " + channels);
-            sendSearch(seq, channels);
+            sendSearch(seq, channels, tls);
         }
     }
 
-    /** Send a 'list' or channel search out via UDP */
-    private void sendSearch(final int seq, final Collection<SearchRequest.Channel> channels)
+    /** Send a 'list' or channel search out via UDP
+     *  @param seq Search sequence number
+     *  @param channels Channels to search, <code>null</code> for listing channels
+     *  @param tls Use TLS?
+     */
+    private void sendSearch(final int seq, final Collection<SearchRequest.Channel> channels, final boolean tls)
     {
         // Buffer starts out with UNICAST bit set in the search message
         for (AddressInfo addr : unicast_search_addresses)
         {
             send_buffer.clear();
             final InetSocketAddress response = udp.getResponseAddress(addr);
-            SearchRequest.encode(true, seq, channels, response, send_buffer);
+            SearchRequest.encode(true, seq, channels, response, tls, send_buffer);
             send_buffer.flip();
             try
             {
@@ -474,7 +508,7 @@ class ChannelSearch
         {
             send_buffer.clear();
             final InetSocketAddress response = udp.getResponseAddress(addr);
-            SearchRequest.encode(false, seq, channels, response, send_buffer);
+            SearchRequest.encode(false, seq, channels, response, tls, send_buffer);
             send_buffer.flip();
             try
             {

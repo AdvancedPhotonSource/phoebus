@@ -359,7 +359,7 @@ public interface LogClient {
 
 
     /**
-     * Delete the tag with name <code>tag</code
+     * Delete the tag with name <code>tag</code>
      *
      * @param tagName - the name of the tag to be deleted
      */
@@ -474,7 +474,7 @@ public interface LogClient {
     }
 
     /**
-     * Remove file attachment from LogEntry <code>logId<code>
+     * Remove file attachment from LogEntry <code>logId</code>
      *
      * @param fileName - the file name to be removed
      * @param logId    - the logid from which the attached file is to be removed
@@ -490,10 +490,6 @@ public interface LogClient {
         return null;
     }
 
-    default LogEntry updateLogEntry(LogEntry logEntry) throws LogbookException {
-        throw new LogbookException(new UnsupportedOperationException());
-    }
-
     default SearchResult search(Map<String, String> map) throws LogbookException{
         throw new LogbookException(new UnsupportedOperationException());
     }
@@ -507,6 +503,14 @@ public interface LogClient {
      * provide relevant information.
      */
     default String serviceInfo(){
+        return null;
+    }
+
+    /**
+     * @param id Unique log entry id
+     * @return A list of archived {@link LogEntry}s corresponding to the unique id.
+     */
+    default SearchResult getArchivedEntries(long id){
         return null;
     }
 }

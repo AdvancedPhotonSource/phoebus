@@ -18,28 +18,18 @@
 
 package org.phoebus.applications.saveandrestore.ui;
 
-import javafx.scene.control.ContextMenu;
-import javafx.scene.control.Label;
-import javafx.scene.control.Tooltip;
-import javafx.scene.control.TreeCell;
-import javafx.scene.control.TreeItem;
+import javafx.application.Platform;
+import javafx.scene.control.*;
 import javafx.scene.image.ImageView;
-import javafx.scene.input.ClipboardContent;
-import javafx.scene.input.Dragboard;
-import javafx.scene.input.MouseEvent;
-import javafx.scene.input.TransferMode;
-import javafx.scene.layout.Border;
-import javafx.scene.layout.BorderStroke;
-import javafx.scene.layout.BorderStrokeStyle;
-import javafx.scene.layout.CornerRadii;
-import javafx.scene.layout.HBox;
+import javafx.scene.input.*;
+import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import org.phoebus.applications.saveandrestore.Messages;
 import org.phoebus.applications.saveandrestore.SaveAndRestoreApplication;
 import org.phoebus.applications.saveandrestore.model.Node;
 import org.phoebus.applications.saveandrestore.model.NodeType;
 import org.phoebus.applications.saveandrestore.model.Tag;
 import org.phoebus.ui.javafx.ImageCache;
-import org.phoebus.ui.javafx.PlatformInfo;
 import org.phoebus.util.time.TimestampFormats;
 
 import java.util.ArrayList;
@@ -51,46 +41,46 @@ import java.util.List;
  */
 public class BrowserTreeCell extends TreeCell<Node> {
 
-    private final ContextMenu folderContextMenu;
-    private final ContextMenu configurationContextMenu;
-    private final ContextMenu snapshotContextMenu;
-    private final ContextMenu rootFolderContextMenu;
-    private final ContextMenu compositeSnapshotContextMenu;
     private final SaveAndRestoreController saveAndRestoreController;
 
     private static final Border BORDER = new Border(new BorderStroke(Color.GREEN, BorderStrokeStyle.SOLID,
             new CornerRadii(5.0), BorderStroke.THIN));
 
     public BrowserTreeCell() {
-        this(null, null, null, null, null, null);
+        this(null);
     }
 
-    public BrowserTreeCell(ContextMenu folderContextMenu, ContextMenu configurationContextMenu,
-                           ContextMenu snapshotContextMenu, ContextMenu rootFolderContextMenu,
-                           ContextMenu compositeSnapshotContextMenu,
-                           SaveAndRestoreController saveAndRestoreController) {
-        this.folderContextMenu = folderContextMenu;
-        this.configurationContextMenu = configurationContextMenu;
-        this.snapshotContextMenu = snapshotContextMenu;
-        this.rootFolderContextMenu = rootFolderContextMenu;
-        this.compositeSnapshotContextMenu = compositeSnapshotContextMenu;
+    public BrowserTreeCell(SaveAndRestoreController saveAndRestoreController) {
         this.saveAndRestoreController = saveAndRestoreController;
 
+        // This is need in order to suppress the context menu when right-clicking in a portion of the
+        // tree view where no tree items are rendered.
+        setOnMousePressed(event -> {
+            if (event.isSecondaryButtonDown() && event.getTarget() instanceof TreeCell) {
+                TreeCell<Node> treeCell = ((TreeCell<Node>) event.getTarget());
+                if (treeCell.getTreeItem() == null) {
+                    setContextMenu(null);
+                }
+            }
+        });
+
         setOnDragDetected(event -> {
-            if (!saveAndRestoreController.checkMultipleSelection()) {
+            if (saveAndRestoreController.getUserIdentity().isNull().get() || !saveAndRestoreController.selectedNodesOfSameType()) {
                 return;
             }
             final ClipboardContent content = new ClipboardContent();
             Node node = getItem();
             // Drag-n-drop not supported for root node
-            if (node != null && !node.getUniqueId().equals(Node.ROOT_FOLDER_UNIQUE_ID)) {
+            if (node != null &&
+                    !node.getUniqueId().equals(Node.ROOT_FOLDER_UNIQUE_ID)) {
                 final List<Node> nodes = new ArrayList<>();
 
                 for (TreeItem<Node> sel : getTreeView().getSelectionModel().getSelectedItems()) {
                     nodes.add(sel.getValue());
                 }
                 content.put(SaveAndRestoreApplication.NODE_SELECTION_FORMAT, nodes);
-                final Dragboard db = startDragAndDrop(getTransferMode(event));
+                // Only move supported!
+                final Dragboard db = startDragAndDrop(TransferMode.MOVE);
                 db.setContent(content);
             }
             event.consume();
@@ -99,9 +89,12 @@ public class BrowserTreeCell extends TreeCell<Node> {
         setOnDragOver(event ->
         {
             final Node node = getItem();
-            if (node != null && node.getNodeType().equals(NodeType.FOLDER)) {
-                event.acceptTransferModes(event.getTransferMode());
-                setBorder(BORDER);
+            if (node != null) {
+                List<Node> sourceNodes = (List<Node>) event.getDragboard().getContent(SaveAndRestoreApplication.NODE_SELECTION_FORMAT);
+                if (DragNDropUtil.mayDrop(event.getTransferMode(), node, sourceNodes)) {
+                    event.acceptTransferModes(event.getTransferMode());
+                    setBorder(BORDER);
+                }
             }
             event.consume();
         });
@@ -116,53 +109,56 @@ public class BrowserTreeCell extends TreeCell<Node> {
         {
             Node targetNode = getItem();
             if (targetNode != null) {
+                TransferMode transferMode = event.getTransferMode();
                 List<Node> sourceNodes = (List<Node>) event.getDragboard().getContent(SaveAndRestoreApplication.NODE_SELECTION_FORMAT);
-                // If the drop target is contained in the selection, return silently...
-                if (!mayDrop(targetNode, sourceNodes)) {
+                if (!DragNDropUtil.mayDrop(transferMode, targetNode, sourceNodes)) {
                     return;
                 }
-                // If selection contains a snapshot or composite snapshot node, return silently...
-                TransferMode transferMode = event.getTransferMode();
-                getTreeView().getSelectionModel().clearSelection(); // This is needed to help controller implement selection restrictions
-                saveAndRestoreController.performCopyOrMove(sourceNodes, targetNode, transferMode);
+                if (DragNDropUtil.snapshotsOrCompositeSnapshotsOnly(sourceNodes) && targetNode.getNodeType().equals(NodeType.COMPOSITE_SNAPSHOT)) {
+                    saveAndRestoreController.editCompositeSnapshot(targetNode, sourceNodes);
+                } else {
+                    getTreeView().getSelectionModel().clearSelection(); // This is needed to help controller implement selection restrictions
+                    saveAndRestoreController.moveNodes(sourceNodes, targetNode, transferMode);
+                }
             }
             event.setDropCompleted(true);
             event.consume();
         });
-    }
 
-    private boolean mayDrop(Node targetNode, List<Node> sourceNodes) {
-        if (sourceNodes.contains(targetNode)) {
-            return false;
-        }
-        if (sourceNodes.stream().filter(n -> n.getNodeType().equals(NodeType.SNAPSHOT) ||
-                n.getNodeType().equals(NodeType.COMPOSITE_SNAPSHOT)).findFirst().isEmpty()) {
-            return true;
-        }
-        return false;
+        // This is to suppress expansion of the TreeItem on double-click.
+        addEventFilter(MouseEvent.MOUSE_PRESSED, (MouseEvent e) -> {
+            if (e.getClickCount() % 2 == 0 && e.getButton().equals(MouseButton.PRIMARY))
+                e.consume();
+        });
     }
 
     @Override
     public void updateItem(Node node, boolean empty) {
         super.updateItem(node, empty);
         if (empty) {
+            setText(null);
             setGraphic(null);
+            setTooltip(null);
             getStyleClass().remove("filter-match");
             return;
         }
         // Use custom layout as this makes it easier to set opacity
         HBox hBox = new HBox();
-        if (!saveAndRestoreController.matchesFilter(node)) {
+        // saveAndRestoreController is null if configuration management is from OPI or channel table
+        if (saveAndRestoreController != null && !saveAndRestoreController.matchesFilter(node)) {
             hBox.setOpacity(0.4);
         }
-        StringBuffer stringBuffer = new StringBuffer();
+        StringBuilder stringBuilder = new StringBuilder();
         String comment = node.getDescription();
         if (comment != null && !comment.isEmpty()) {
-            stringBuffer.append(comment).append(System.lineSeparator());
+            stringBuilder.append(comment).append(System.lineSeparator());
         }
-        stringBuffer.append(TimestampFormats.SECONDS_FORMAT.format(node.getCreated().toInstant())).append(" (").append(node.getUserName()).append(")");
+        if (node.getCreated() != null) { // Happens if configuration management is accessed from context menu
+            stringBuilder.append(TimestampFormats.SECONDS_FORMAT
+                    .format(node.getLastModified() != null ? node.getLastModified().toInstant() : node.getCreated().toInstant())).append(" (").append(node.getUserName()).append(")");
+        }
         // Tooltip with at least date and user id is set on all tree items
-        setTooltip(new Tooltip(stringBuffer.toString()));
+        setTooltip(new Tooltip(stringBuilder.toString()));
         switch (node.getNodeType()) {
             case SNAPSHOT:
                 if (node.hasTag(Tag.GOLDEN)) {
@@ -177,7 +173,9 @@ public class BrowserTreeCell extends TreeCell<Node> {
                     tagImage.setPreserveRatio(true);
                     hBox.getChildren().add(tagImage);
                 }
-                setContextMenu(snapshotContextMenu);
+                if(saveAndRestoreController != null){
+                    setContextMenu(new ContextMenuSnapshot(saveAndRestoreController));
+                }
                 break;
             case COMPOSITE_SNAPSHOT:
                 hBox.getChildren().add(new ImageView(ImageRepository.COMPOSITE_SNAPSHOT));
@@ -186,44 +184,42 @@ public class BrowserTreeCell extends TreeCell<Node> {
                     ImageView tagImage = new ImageView(ImageCache.getImage(BrowserTreeCell.class, "/icons/save-and-restore/snapshot-tags.png"));
                     tagImage.setFitHeight(13);
                     tagImage.setPreserveRatio(true);
-                    hBox.getChildren().add(tagImage);
+                    getChildren().add(tagImage);
                 }
-                setContextMenu(compositeSnapshotContextMenu);
+                if(saveAndRestoreController != null){
+                    setContextMenu(new ContextMenuCompositeSnapshot(saveAndRestoreController));
+                }
                 break;
             case CONFIGURATION:
                 hBox.getChildren().add(new ImageView(ImageRepository.CONFIGURATION));
                 hBox.getChildren().add(new Label(node.getName()));
-                setContextMenu(configurationContextMenu);
+                if(saveAndRestoreController != null){
+                    setContextMenu(new ContextMenuConfiguration(saveAndRestoreController));
+                }
                 break;
             case FOLDER:
-                String name = node.getName();
-                if (node.getUniqueId().equals(Node.ROOT_FOLDER_UNIQUE_ID)) {
-                    setContextMenu(rootFolderContextMenu);
-                    name += " (" + SaveAndRestoreService.getInstance().getServiceIdentifier() + ")";
-                } else {
-                    setContextMenu(folderContextMenu);
-                }
                 hBox.getChildren().add(new ImageView(ImageRepository.FOLDER));
-                hBox.getChildren().add(new Label(name));
+                hBox.getChildren().add(new Label(node.getName()));
+                if (node.getUniqueId().equals(Node.ROOT_FOLDER_UNIQUE_ID)) {
+                    setTooltip(new Tooltip(SaveAndRestoreService.getInstance().getServiceIdentifier()));
+                    ContextMenu rootFolderContextMenu = new ContextMenu();
+                    MenuItem newRootFolderMenuItem = new MenuItem(Messages.contextMenuNewFolder, new ImageView(ImageRepository.FOLDER));
+                    newRootFolderMenuItem.setOnAction(ae -> saveAndRestoreController.createNewFolder());
+                    rootFolderContextMenu.getItems().add(newRootFolderMenuItem);
+                    rootFolderContextMenu.setOnShowing(event -> {
+                        if (saveAndRestoreController.getUserIdentity().isNull().get()) {
+                            Platform.runLater(() -> rootFolderContextMenu.hide());
+                        }
+                    });
+                    if(saveAndRestoreController != null){
+                        setContextMenu(rootFolderContextMenu);
+                    }
+
+                } else if (saveAndRestoreController != null){
+                    setContextMenu(new ContextMenuFolder(saveAndRestoreController));
+                }
                 break;
         }
         setGraphic(hBox);
-    }
-
-    /**
-     * Determines the {@link TransferMode} based on the state of the modifier key.
-     * This method must consider the
-     * operating system as the identity of the modifier key varies (alt/option on Mac OS, ctrl on the rest).
-     *
-     * @param event The mouse event containing information on key press.
-     * @return {@link TransferMode#COPY} if modifier key is pressed, otherwise {@link TransferMode#MOVE}.
-     */
-    private TransferMode getTransferMode(MouseEvent event) {
-        if (event.isControlDown() && (PlatformInfo.is_linux || PlatformInfo.isWindows || PlatformInfo.isUnix)) {
-            return TransferMode.COPY;
-        } else if (event.isAltDown() && PlatformInfo.is_mac_os_x) {
-            return TransferMode.COPY;
-        }
-        return TransferMode.MOVE;
     }
 }

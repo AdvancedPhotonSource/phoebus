@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Oak Ridge National Laboratory.
+ * Copyright (c) 2019-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -9,11 +9,14 @@ package org.epics.pva.common;
 
 import static org.epics.pva.PVASettings.logger;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.channels.SocketChannel;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -58,8 +61,12 @@ abstract public class TCPHandler
     /** Is this the client, expecting received messages to be marked as server messages? */
     private final boolean client_mode;
 
-    /** TCP socket to PVA peer */
-    private final SocketChannel socket;
+    /** TCP socket to PVA peer
+     *
+     *  Reading and writing is handled by receive and send threads,
+     *  but 'protected' so that derived classes may peek at socket properties.
+     */
+    protected final Socket socket;
 
     /** Flag to indicate that 'close' was called to close the 'socket' */
     protected volatile boolean running = true;
@@ -90,6 +97,7 @@ abstract public class TCPHandler
     };
 
     /** Pool for sender and receiver threads */
+    // Default keeps idle threads for one minute
     private static final ExecutorService thread_pool = Executors.newCachedThreadPool(runnable ->
     {
         final Thread thread = new Thread(runnable);
@@ -98,10 +106,10 @@ abstract public class TCPHandler
     });
 
     /** Thread that runs {@link TCPHandler#receiver()} */
-    private final Future<Void> receive_thread;
+    private volatile Future<Void> receive_thread = null;
 
     /** Thread that runs {@link TCPHandler#sender()} */
-    private volatile Future<Void> send_thread;
+    private volatile Future<Void> send_thread = null;
 
     /** Start receiving messages
      *
@@ -113,9 +121,9 @@ abstract public class TCPHandler
      *  @param client_mode Is this the client, expecting to receive messages from server?
      *  @see #startSender()
      */
-    public TCPHandler(final SocketChannel socket, final boolean client_mode)
+    public TCPHandler(final Socket socket, final boolean client_mode)
     {
-        this.socket = socket;
+        this.socket = Objects.requireNonNull(socket);
         this.client_mode = client_mode;
 
         // Receive buffer byte order is set based on header flag of each received message.
@@ -123,8 +131,13 @@ abstract public class TCPHandler
         // For server, it stays that way.
         // For client, order is updated during connection validation (PVAHeader.CTRL_SET_BYTE_ORDER)
         send_buffer.order(ByteOrder.nativeOrder());
+    }
 
-        // Start receiving data
+    /** Start receiving data
+     *  To be called by Client/ServerTCPHandler when fully constructed
+     */
+    protected void startReceiver()
+    {
         receive_thread = thread_pool.submit(this::receiver);
     }
 
@@ -146,7 +159,7 @@ abstract public class TCPHandler
     /** @return Remote address of this end of the TCP socket */
     public InetSocketAddress getRemoteAddress()
     {
-        return new InetSocketAddress(socket.socket().getInetAddress(), socket.socket().getPort());
+        return new InetSocketAddress(socket.getInetAddress(), socket.getPort());
     }
 
     /** @return Is the send queue idle/empty? */
@@ -173,8 +186,8 @@ abstract public class TCPHandler
     {
         try
         {
-            Thread.currentThread().setName("TCP sender from " + socket.getLocalAddress() + " to " + socket.getRemoteAddress());
-            logger.log(Level.FINER, Thread.currentThread().getName() + " started");
+            Thread.currentThread().setName("TCP sender from " + socket.getLocalSocketAddress() + " to " + socket.getRemoteSocketAddress());
+            logger.log(Level.FINER, () -> Thread.currentThread().getName() + " started");
             while (true)
             {
                 send_buffer.clear();
@@ -219,35 +232,26 @@ abstract public class TCPHandler
         // Limiting buffer size increases performance.
         final int batch_limit = server_buffer_size / 2;
         final int total = buffer.limit();
-        int batch = total - buffer.position();
+        int pos = buffer.position();
+        int batch = total - pos;
         if (batch > batch_limit)
         {
             batch = batch_limit;
-            buffer.limit(buffer.position() + batch);
+            buffer.limit(pos + batch);
         }
 
-        int tries = 0;
+        final OutputStream out = socket.getOutputStream();
         while (batch > 0)
         {
-            final int sent = socket.write(buffer);
-            if (sent < 0)
-                throw new Exception("Connection closed");
-            else if (sent == 0)
-            {
-                logger.log(Level.FINER, "Send buffer full after " + buffer.position() + " of " + total + " bytes.");
-                Thread.sleep(Math.max(++tries * 100, 1000));
-            }
-            else
-            {
-                // Wrote _something_
-                tries = 0;
-                // Determine next batch
-                batch = total - buffer.position();
-                if (batch > batch_limit)
-                    batch = batch_limit;
-                // In case batch > 0, move limit to write that batch
-                buffer.limit(buffer.position() + batch);
-            }
+            out.write(buffer.array(), pos, batch);
+            pos += batch;
+            buffer.position(pos);
+            // Determine next batch
+            batch = total - pos;
+            if (batch > batch_limit)
+                batch = batch_limit;
+            // Move limit to write that batch
+            buffer.limit(buffer.position() + batch);
         }
     }
 
@@ -256,10 +260,11 @@ abstract public class TCPHandler
     {
         try
         {
-            Thread.currentThread().setName("TCP receiver " + socket.getRemoteAddress());
-            logger.log(Level.FINER, Thread.currentThread().getName() + " started");
+            Thread.currentThread().setName("TCP receiver " + socket.getLocalSocketAddress());
+            logger.log(Level.FINER, () -> Thread.currentThread().getName() + " started for " + socket.getRemoteSocketAddress());
             logger.log(Level.FINER, "Native byte order " + receive_buffer.order());
             receive_buffer.clear();
+            final InputStream in = socket.getInputStream();
             while (true)
             {
                 // Read at least one complete message,
@@ -268,7 +273,7 @@ abstract public class TCPHandler
                 while (receive_buffer.position() < message_size)
                 {
                     receive_buffer = assertBufferSize(receive_buffer, message_size);
-                    final int read = socket.read(receive_buffer);
+                    final int read = in.read(receive_buffer.array(), receive_buffer.position(), receive_buffer.remaining());
                     if (read < 0)
                     {
                         logger.log(Level.FINER, () -> Thread.currentThread().getName() + ": socket closed");
@@ -276,6 +281,7 @@ abstract public class TCPHandler
                     }
                     if (read > 0)
                         logger.log(Level.FINER, () -> Thread.currentThread().getName() + ": " + read + " bytes");
+                   receive_buffer.position(receive_buffer.position() + read);
                     // and once we get the header, it will tell
                     // us how large the message actually is
                     message_size = PVAHeader.checkMessageAndGetSize(receive_buffer, client_mode);
@@ -558,7 +564,7 @@ abstract public class TCPHandler
         {
             running = false;
             socket.close();
-            if (wait)
+            if (wait && receive_thread != null)
                 receive_thread.get(5, TimeUnit.SECONDS);
         }
         catch (Exception ex)
@@ -575,7 +581,7 @@ abstract public class TCPHandler
         buf.append("TCPHandler");
         try
         {
-            final SocketAddress server = socket.getRemoteAddress();
+            final SocketAddress server = socket.getRemoteSocketAddress();
             buf.append(" ").append(server);
         }
         catch (Exception ex)

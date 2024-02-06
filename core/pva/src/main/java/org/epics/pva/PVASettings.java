@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019-2022 Oak Ridge National Laboratory.
+ * Copyright (c) 2019-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -79,9 +79,11 @@ public class PVASettings
      *  <p>Example entries:
      *
      *  <pre>
-     *  192.168.10.20    Send name lookups to that IPv4 TCP address at EPICS_PVA_SERVER_PORT (default 5075)
-     *  ::1              Search to IPv6 localhost at EPICS_PVA_SERVER_PORT
-     *  [::1]:9876       Same with non-standard port
+     *  192.168.10.20              Send name lookups to that IPv4 TCP address at EPICS_PVA_SERVER_PORT (default 5075)
+     *  ::1                        Search to IPv6 localhost at EPICS_PVA_SERVER_PORT
+     *  [::1]:9876                 Same with non-standard port
+     *  pvas://192.168.10.20       Use TLS, defaulting to EPICS_PVAS_TLS_PORT (5076)
+     *  pvas://192.168.10.20:5086  Use TLS with specific port
      *  </pre>
      */
     public static String EPICS_PVA_NAME_SERVERS = "";
@@ -89,8 +91,11 @@ public class PVASettings
     /** PVA client port for sending name searches and receiving beacons */
     public static int EPICS_PVA_BROADCAST_PORT = 5076;
 
-    /** First PVA port used by server */
+    /** First PVA port used by plain TCP server */
     public static int EPICS_PVA_SERVER_PORT = 5075;
+
+    /** First PVA port used by TLS server */
+    public static int EPICS_PVAS_TLS_PORT = 5076;
 
     /** Local addresses to which server will listen.
      *
@@ -130,13 +135,52 @@ public class PVASettings
     /** Multicast address used for the local re-send of IPv4 unicasts */
     public static String EPICS_PVA_MULTICAST_GROUP = "224.0.0.128";
 
+    /** Path to PVA server keystore and truststore, a PKCS12 file that contains server's public and private key
+     *  as well as trusted CAs that are used to verify client certificates.
+     *
+     *  <p>Format: "/path/to/file;password".
+     *
+     *  <p>When empty, PVA server does not support secure (TLS) communication.
+     */
+    public static String EPICS_PVAS_TLS_KEYCHAIN = "";
+
+    /** Secure server options
+     *
+     *  <ul>
+     *  <li><code>client_cert=optional</code>:
+     *      Default; clients can provide certificate for "X509" authentication,
+     *      but may also use "ca" or "anonymous" authentication
+     *  <li><code>client_cert=require</code>:
+     *      Clients must provide certificate for "X509" authentication.
+     *      Socket with otherwise be closed during initial handshake.
+     *      Server will log "SSLHandshakeException: Empty client certificate chain",
+     *      client will log "SSLHandshakeException: Received fatal alert: bad_certificate"
+     *  </ul>
+     */
+    public static String EPICS_PVAS_TLS_OPTIONS = "";
+
+    /** Does EPICS_PVAS_TLS_OPTIONS contain "client_cert=require"? */
+    public static boolean require_client_cert;
+
+    /** Path to PVA client keystore and truststore, a PKCS12 file that contains the certificates or root CA
+     *  that the client will trust when verifying a server certificate,
+     *  and optional client certificate used with x509 authentication to establish the client's name.
+     *
+     *  <p>Format: "/path/to/file;password".
+     *
+     *  <p>When empty, PVA client does not support secure (TLS) communication.
+     *  When configured, PVA client can reply to PVA servers that offer "tls" in a search reply,
+     *  and searches via EPICS_PVA_NAME_SERVERS will also use TLS.
+     */
+    public static String EPICS_PVA_TLS_KEYCHAIN = "";
+
     /** TCP buffer size for sending data
      *
      *  <p>Messages are constructed within this buffer,
      *  so it needs to be pre-configured to hold the maximum
      *  package size.
      */
-    // double[8 million] plus some protocol overhead
+    // 1 million 'double' plus some protocol overhead
     public static int EPICS_PVA_SEND_BUFFER_SIZE = 8001000;
 
     /** Initial TCP buffer size for receiving data
@@ -198,21 +242,37 @@ public class PVASettings
      */
     public static int EPICS_PVA_MAX_BEACON_AGE = 300;
 
+
+
+    /** Whether to allow PVA to use IPv6 
+     *
+     *  <p> If this is false then PVA will not attempt to 
+     *   use any IPv6 capability at all. This is useful if your
+     *   system does not have any IPv6 support.  
+     */
+    public static boolean EPICS_PVA_ENABLE_IPV6 = true;
+
     static
     {
         EPICS_PVA_ADDR_LIST = get("EPICS_PVA_ADDR_LIST", EPICS_PVA_ADDR_LIST);
         EPICS_PVA_AUTO_ADDR_LIST = get("EPICS_PVA_AUTO_ADDR_LIST", EPICS_PVA_AUTO_ADDR_LIST);
         EPICS_PVA_NAME_SERVERS = get("EPICS_PVA_NAME_SERVERS", EPICS_PVA_NAME_SERVERS);
         EPICS_PVA_SERVER_PORT = get("EPICS_PVA_SERVER_PORT", EPICS_PVA_SERVER_PORT);
+        EPICS_PVAS_TLS_PORT = get("EPICS_PVAS_TLS_PORT", EPICS_PVAS_TLS_PORT);
         EPICS_PVAS_INTF_ADDR_LIST = get("EPICS_PVAS_INTF_ADDR_LIST", EPICS_PVAS_INTF_ADDR_LIST).trim();
         EPICS_PVA_BROADCAST_PORT = get("EPICS_PVA_BROADCAST_PORT", EPICS_PVA_BROADCAST_PORT);
         EPICS_PVAS_BROADCAST_PORT = get("EPICS_PVAS_BROADCAST_PORT", EPICS_PVAS_BROADCAST_PORT);
         EPICS_PVA_CONN_TMO = get("EPICS_PVA_CONN_TMO", EPICS_PVA_CONN_TMO);
         EPICS_PVA_MAX_ARRAY_FORMATTING = get("EPICS_PVA_MAX_ARRAY_FORMATTING", EPICS_PVA_MAX_ARRAY_FORMATTING);
+        EPICS_PVAS_TLS_KEYCHAIN = get("EPICS_PVAS_TLS_KEYCHAIN", EPICS_PVAS_TLS_KEYCHAIN);
+        EPICS_PVAS_TLS_OPTIONS = get("EPICS_PVAS_TLS_OPTIONS", EPICS_PVAS_TLS_OPTIONS);
+        require_client_cert =  EPICS_PVAS_TLS_OPTIONS.contains("client_cert=require");
+        EPICS_PVA_TLS_KEYCHAIN = get("EPICS_PVA_TLS_KEYCHAIN", EPICS_PVA_TLS_KEYCHAIN);
         EPICS_PVA_SEND_BUFFER_SIZE = get("EPICS_PVA_SEND_BUFFER_SIZE", EPICS_PVA_SEND_BUFFER_SIZE);
         EPICS_PVA_FAST_BEACON_MIN = get("EPICS_PVA_FAST_BEACON_MIN", EPICS_PVA_FAST_BEACON_MIN);
         EPICS_PVA_FAST_BEACON_MAX = get("EPICS_PVA_FAST_BEACON_MAX", EPICS_PVA_FAST_BEACON_MAX);
         EPICS_PVA_MAX_BEACON_AGE = get("EPICS_PVA_MAX_BEACON_AGE", EPICS_PVA_MAX_BEACON_AGE);
+        EPICS_PVA_ENABLE_IPV6 = get("EPICS_PVA_ENABLE_IPV6", EPICS_PVA_ENABLE_IPV6);
     }
 
     /** Get setting from property, environment or default

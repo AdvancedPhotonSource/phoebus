@@ -84,12 +84,15 @@ public class ActionUtil
         String expanded_path = "";
         try
         {
-            // Path to resolve, after expanding macros of source widget and action
-            final Macros expanded = new Macros(action.getMacros());
-            expanded.expandValues(source_widget.getEffectiveMacros());
-            final Macros macros = Macros.merge(source_widget.getEffectiveMacros(), expanded);
+            // Path to resolve, after expanding macros of action in environment of source widget
+            final Macros macros = action.getMacros(); // Not copying, just using action's macros
+            macros.expandValues(source_widget.getEffectiveMacros());
+
+            // For display path, use the combined macros...
             expanded_path = MacroHandler.replace(new MacroOrSystemProvider(macros), action.getFile());
-            logger.log(Level.FINER, "{0}, effective macros {1} ({2})", new Object[] { action, macros, expanded_path });
+            // .. but fall back to properties
+            expanded_path = MacroHandler.replace(source_widget.getMacrosOrProperties(), expanded_path);
+            logger.log(Level.FINER, "{0}, effective macros {1} ({2})", new Object[] { action, macros.toExpandedString(), expanded_path });
 
             // Resolve new display file relative to the source widget model (not 'top'!)
             final DisplayModel widget_model = source_widget.getDisplayModel();
@@ -100,8 +103,8 @@ public class ActionUtil
 
             // Model is standalone; source_widget (Action button, ..) is _not_ the parent,
             // but it does add macros to those already defined in the display file.
-            final Macros combined_macros = Macros.merge(macros, new_model.propMacros().getValue());
-            new_model.propMacros().setValue(combined_macros);
+            // Expand macros down the widget hierarchy
+            new_model.expandMacros(macros);
 
             // Schedule representation on UI thread...
             final DisplayModel top_model = source_widget.getTopDisplayModel();
@@ -277,8 +280,14 @@ public class ActionUtil
             // Resolve command relative to the source widget model (not 'top'!)
             final DisplayModel widget_model = source_widget.getDisplayModel();
             final String parent_file = widget_model.getUserData(DisplayModel.USER_DATA_INPUT_FILE);
-            final String parent_dir = ModelResourceUtil.getDirectory(parent_file);
+            String parent_dir = ModelResourceUtil.getDirectory(parent_file);
 
+            // Check if the parent_dir exists or is reachable. If not, use "." as the parent_dir.
+            File parentDirectory = new File(parent_dir);
+            if (!parentDirectory.exists() || !parentDirectory.isDirectory()) {
+              logger.log(Level.WARNING, "Parent directory {0} does not exist or is not reachable. Using current directory instead to execute command.", parent_dir);
+              parent_dir = ".";
+            }
             // Execute (this is already running on background thread)
             logger.log(Level.FINE, "Executing command {0} in {1}", new Object[] { command, parent_dir });
             final CommandExecutor executor = new CommandExecutor(command, new File(parent_dir));
@@ -370,7 +379,7 @@ public class ActionUtil
     private static String resolve(final Widget source_widget, final String path) throws Exception
     {
         // Path to resolve, after expanding macros
-        final Macros macros = source_widget.getEffectiveMacros();
+        final MacroValueProvider macros = source_widget.getMacrosOrProperties();
         final String expanded_path = MacroHandler.replace(macros, path);
 
         // Resolve file relative to the source widget model (not 'top'!)

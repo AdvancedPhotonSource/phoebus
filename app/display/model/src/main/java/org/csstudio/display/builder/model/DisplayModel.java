@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015-2021 Oak Ridge National Laboratory.
+ * Copyright (c) 2015-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -89,16 +89,6 @@ public class DisplayModel extends Widget
      */
     public static final String USER_DATA_EMBEDDING_WIDGET = "_embedding_widget";
 
-    /** Macros set in preferences
-     *
-     *  <p>Fetched once on display creation to
-     *  use latest preference settings on newly opened display,
-     *  while not fetching preferences for each macro evaluation
-     *  within a running display to improve performance
-     */
-    private final Macros preference_macros = Preferences.getMacros();
-
-
 
     /** Custom configurator to read legacy *.opi files */
     private static class CustomConfigurator extends WidgetConfigurator
@@ -140,12 +130,12 @@ public class DisplayModel extends Widget
     /** 'grid_step_x' property */
     public static final WidgetPropertyDescriptor<Integer> propGridStepX =
         newIntegerPropertyDescriptor(WidgetPropertyCategory.MISC, "grid_step_x", Messages.WidgetProperties_GridStepX,
-                                     4, Integer.MAX_VALUE);
+                                     1, Integer.MAX_VALUE);
 
     /** 'grid_step_y' property */
     public static final WidgetPropertyDescriptor<Integer> propGridStepY =
         newIntegerPropertyDescriptor(WidgetPropertyCategory.MISC, "grid_step_y", Messages.WidgetProperties_GridStepY,
-                                     4, Integer.MAX_VALUE);
+                                     1, Integer.MAX_VALUE);
 
     private volatile WidgetProperty<Macros> macros;
     private volatile WidgetProperty<WidgetColor> background;
@@ -302,25 +292,27 @@ public class DisplayModel extends Widget
         throw new IllegalStateException("Display cannot have parent widget " + parent);
     }
 
+    /** Expand macros for this display's widget hierarchy
+     *  @param base Base macros from preferences, launcher, parent container
+     */
+    @Override
+    public void expandMacros(final Macros base)
+    {
+        // Expand the display macros
+        propMacros().getValue().expandValues(base);
+
+        // Recurse into child widgets
+        for (Widget child: getChildren())
+            child.expandMacros(propMacros().getValue());
+    }
+
     /** Display model provides macros for all its widgets.
      *  @return {@link Macros}
      */
     @Override
     public Macros getEffectiveMacros()
     {
-        // 1) Lowest priority are either
-        // 1.a) .. global macros from preferences
-        // 1.b) .. macros from embedding widget,
-        //      which may in turn be embedded elsewhere,
-        //      ultimately fetching the macros from preferences.
-        final Widget embedder = getUserData(DisplayModel.USER_DATA_EMBEDDING_WIDGET);
-        Macros result = (embedder == null)
-            ? preference_macros
-            : embedder.getEffectiveMacros();
-
-        // 2) This display may provide added macros or replacement values
-        result = Macros.merge(result, propMacros().getValue());
-        return result;
+        return propMacros().getValue();
     }
 
     /** @return 'background_color' property */

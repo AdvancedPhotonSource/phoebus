@@ -54,6 +54,7 @@ import org.phoebus.ui.dialog.ExceptionDetailsErrorDialog;
 import org.phoebus.ui.javafx.ImageCache;
 
 import javax.imageio.ImageIO;
+import javax.ws.rs.core.UriBuilder;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -144,7 +145,9 @@ public class AttachmentsViewController {
                         }
                     }
                 }
-                ApplicationLauncherService.openFile(attachment.getFile(), false, null);
+                else {
+                   showImageAttachment();
+                }
             }
         });
 
@@ -187,11 +190,20 @@ public class AttachmentsViewController {
 
         imagePreview.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
             if (selectedAttachment.get() != null && selectedAttachment.get().getContentType().startsWith("image")) {
-                ApplicationLauncherService.openFile(selectedAttachment.get().getFile(),
-                        false, null);
+                showImageAttachment();
             }
             event.consume();
         });
+    }
+
+    /**
+     * Launches the Image Viewer application to show the selected image attachment with a watermark.
+     */
+    private void showImageAttachment(){
+        URI uri = selectedAttachment.get().getFile().toURI();
+        URI withWatermark = UriBuilder.fromUri(uri).queryParam("watermark", "true").build();
+        ApplicationLauncherService.openResource(withWatermark,
+                false, null);
     }
 
     public ObservableList<Attachment> getSelectedAttachments() {
@@ -212,7 +224,7 @@ public class AttachmentsViewController {
             this.attachments.setAll(attachments);
             attachmentListView.setItems(this.attachments);
             // Update UI
-            if (this.attachments.size() > 0) {
+            if (!this.attachments.isEmpty()) {
                 attachmentListView.getSelectionModel().select(this.attachments.get(0));
             }
         });
@@ -253,18 +265,25 @@ public class AttachmentsViewController {
      * @param attachment The image {@link Attachment} selected by user.
      */
     private void showImagePreview(Attachment attachment) {
-        try {
-            BufferedImage bufferedImage = ImageIO.read(attachment.getFile());
-            // BufferedImage may be null due to lazy loading strategy.
-            if (bufferedImage == null) {
-                return;
-            }
-            Image image = SwingFXUtils.toFXImage(bufferedImage, null);
-            imagePreview.visibleProperty().setValue(true);
-            imagePreview.setImage(image);
-        } catch (IOException ex) {
-            Logger.getLogger(AttachmentsEditorController.class.getName())
-                    .log(Level.SEVERE, "Unable to load image file " + attachment.getFile().getAbsolutePath(), ex);
+        if (attachment.getFile() != null) {
+            // Load image data off UI thread...
+            JobManager.schedule("Show image attachment", monitor -> {
+                try {
+                    BufferedImage bufferedImage = ImageIO.read(attachment.getFile());
+                    // BufferedImage may be null due to lazy loading strategy.
+                    if (bufferedImage == null) {
+                        return;
+                    }
+                    Platform.runLater(() -> {
+                        Image image = SwingFXUtils.toFXImage(bufferedImage, null);
+                        imagePreview.visibleProperty().setValue(true);
+                        imagePreview.setImage(image);
+                   });
+                } catch (IOException ex) {
+                    Logger.getLogger(AttachmentsEditorController.class.getName())
+                            .log(Level.SEVERE, "Unable to load image file " + attachment.getFile().getAbsolutePath(), ex);
+                }
+            });
         }
     }
 
@@ -278,7 +297,7 @@ public class AttachmentsViewController {
         dialog.setInitialDirectory(new File(System.getProperty("user.home")));
         File targetFolder = dialog.showDialog(splitPane.getScene().getWindow());
         JobManager.schedule("Save attachments job", (monitor) ->
-                selectedAttachments.stream().forEach(a -> copyAttachment(targetFolder, a)));
+                selectedAttachments.forEach(a -> copyAttachment(targetFolder, a)));
     }
 
     private void copyAttachment(File targetFolder, Attachment attachment) {
@@ -295,10 +314,6 @@ public class AttachmentsViewController {
 
     public void addListSelectionChangeListener(ListChangeListener<Attachment> changeListener) {
         listSelectionChangeListeners.add(changeListener);
-    }
-
-    public void removeListSelectionChangeListener(ListChangeListener<Attachment> changeListener) {
-        listSelectionChangeListeners.remove(changeListener);
     }
 
     public void removeAttachments(List<Attachment> attachmentsToRemove) {

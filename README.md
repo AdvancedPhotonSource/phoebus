@@ -9,7 +9,7 @@ https://control-system-studio.readthedocs.io
 
 ## Requirements
  - [JDK11 or later, suggested is OpenJDK](http://jdk.java.net/12).
- - [maven 2.x](https://maven.apache.org/) or [ant](http://ant.apache.org/)
+ - [maven 3.x](https://maven.apache.org/) or [ant](http://ant.apache.org/)
 
 
 ## Target Platform
@@ -218,8 +218,11 @@ To build for a different platform, create the `dependencies` in one of these way
     # Either create the build platform for Linux..
     ( cd phoebus; mvn clean verify  -Djavafx.platform=linux  -f dependencies/pom.xml )
 
-    # or Mac OS X ..
+    # or Mac OS X (Intel)
     ( cd phoebus; mvn clean verify  -Djavafx.platform=mac    -f dependencies/pom.xml )
+
+    # or Mac OS X (M2)
+    ( cd phoebus; mvn clean verify  -Djavafx.platform=mac-aarch64  -f dependencies/pom.xml )
 
     # or Windows:
     ( cd phoebus; mvn clean verify  -Djavafx.platform=win    -f dependencies/pom.xml )
@@ -249,10 +252,10 @@ Create a sonatype account and update the maven settings.xml file with your sonat
 **Prepare the release**  
 `mvn release:prepare`  
 In this step will ensure there are no uncommitted changes, ensure the versions number are correct, tag the scm, etc.
-A full list of checks is documented [here](https://maven.apache.org/maven-release/maven-release-plugin/examples/prepare-release.html).
+A full list of checks is documented [here](https://maven.apache.org/maven-release/maven-release-plugin/usage/prepare-release.html).
 
 **Perform the release**  
-`mvn -Pdocs release:perform`  
+`mvn -Darguments="-Dskip-executable-jar" -Pdocs,releases release:perform`  
 Checkout the release tag, build, sign and push the build binaries to sonatype. The `docs` profile is needed in order
 to create required javadocs jars.
 

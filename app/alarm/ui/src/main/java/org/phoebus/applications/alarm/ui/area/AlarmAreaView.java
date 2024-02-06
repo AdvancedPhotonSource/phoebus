@@ -17,12 +17,21 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 
+import javafx.scene.layout.Border;
+import javafx.scene.layout.BorderStroke;
+import javafx.scene.layout.BorderStrokeStyle;
+import javafx.scene.layout.BorderWidths;
+import javafx.scene.layout.CornerRadii;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import org.phoebus.applications.alarm.AlarmSystem;
 import org.phoebus.applications.alarm.client.AlarmClient;
 import org.phoebus.applications.alarm.client.AlarmClientListener;
 import org.phoebus.applications.alarm.model.AlarmTreeItem;
 import org.phoebus.applications.alarm.model.SeverityLevel;
 import org.phoebus.applications.alarm.ui.AlarmUI;
+import org.phoebus.ui.javafx.JFXUtil;
 import org.phoebus.ui.javafx.UpdateThrottle;
 
 import javafx.application.Platform;
@@ -32,16 +41,6 @@ import javafx.geometry.Pos;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BackgroundFill;
-import javafx.scene.layout.Border;
-import javafx.scene.layout.BorderStroke;
-import javafx.scene.layout.BorderStrokeStyle;
-import javafx.scene.layout.BorderWidths;
-import javafx.scene.layout.CornerRadii;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.shape.StrokeLineJoin;
@@ -87,11 +86,15 @@ public class AlarmAreaView extends StackPane implements AlarmClientListener
     private final Font font = new Font(AlarmSystem.alarm_area_font_size);
     private final Border border = new Border(new BorderStroke(Color.BLACK, style, radii, new BorderWidths(2)));
 
+    private final String alarmConfigName;
+
     /** @param model Model */
     public AlarmAreaView(final AlarmClient model)
     {
         if (model.isRunning())
             throw new IllegalStateException();
+
+        alarmConfigName = model.getRoot().getName();
 
         grid.setHgap(AlarmSystem.alarm_area_gap);
         grid.setVgap(AlarmSystem.alarm_area_gap);
@@ -234,20 +237,15 @@ public class AlarmAreaView extends StackPane implements AlarmClientListener
             logger.log(Level.WARNING, "Cannot update unknown alarm area item " + item_name);
             return;
         }
-        final SeverityLevel severity = areaFilter.getSeverity(item_name);
-        final Color color = AlarmUI.getColor(severity);
-        view_item.setBackground(new Background(new BackgroundFill(color, radii, Insets.EMPTY)));
-        if (color.getBrightness() >= 0.5)
-            view_item.setTextFill(Color.BLACK);
-        else
-            view_item.setTextFill(Color.WHITE);
+        SeverityLevel severityLevel = areaFilter.getSeverity(item_name);
+        view_item.setStyle("-fx-alignment: center; -fx-border-color: black; -fx-border-width: 2; -fx-border-radius: 10; -fx-background-insets: 1; -fx-background-radius: 10; -fx-text-fill: " + JFXUtil.webRGB(AlarmUI.getAlarmAreaPanelColor(severityLevel)) + ";  -fx-background-color: " + JFXUtil.webRGB(AlarmUI.getAlarmAreaPanelBackgroundColor(severityLevel)));
     }
 
     private void createContextMenu()
     {
         final ObservableList<MenuItem> menu_items = menu.getItems();
 
-        menu_items.add(new OpenTreeViewAction());
+        menu_items.add(new OpenTreeViewAction(alarmConfigName));
         this.setOnContextMenuRequested(event ->
             menu.show(this.getScene().getWindow(), event.getScreenX(), event.getScreenY())
         );

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2017-2022 Oak Ridge National Laboratory.
+ * Copyright (c) 2017-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -24,6 +24,7 @@ import org.csstudio.display.builder.editor.EditorUtil;
 import org.csstudio.display.builder.editor.Messages;
 import org.csstudio.display.builder.editor.WidgetSelectionHandler;
 import org.csstudio.display.builder.editor.actions.ActionDescription;
+import org.csstudio.display.builder.editor.undo.SortWidgetsAction;
 import org.csstudio.display.builder.model.DisplayModel;
 import org.csstudio.display.builder.model.ModelPlugin;
 import org.csstudio.display.builder.model.Widget;
@@ -120,12 +121,11 @@ public class DisplayEditorInstance implements AppInstance
         menu_node.setOnContextMenuRequested(event -> handleContextMenu(menu, event));
         menu_node.setContextMenu(menu);
 
-        dock_item.addCloseCheck(this::okToClose);
         dock_item.addClosedNotification(this::dispose);
     }
 
     /** @return Current 'dirty' state */
-    boolean isDirty()
+    public boolean isDirty()
     {
         return dock_item.isDirty();
     }
@@ -163,6 +163,10 @@ public class DisplayEditorInstance implements AppInstance
             final MenuItem morph = new MorphWidgetsMenu(editor_gui.getDisplayEditor());
             final MenuItem back = new ActionWapper(ActionDescription.TO_BACK);
             final MenuItem front = new ActionWapper(ActionDescription.TO_FRONT);
+
+            final ActionWapper sort_widgets = new ActionWapper(ActionDescription.SORT_WIDGETS);
+            sort_widgets.setDisable(SortWidgetsAction.getWidgetToSort(editor_gui.getDisplayEditor()) == null);
+
             final ActionWapper open_external = new ActionWapper(ActionDescription.OPEN_EXTERNAL);
             if (selection.size() <= 0)
             {
@@ -245,6 +249,7 @@ public class DisplayEditorInstance implements AppInstance
                                        morph,
                                        back,
                                        front,
+                                       sort_widgets,
                                        new SetDisplaySize(editor_gui.getDisplayEditor()),
                                        new SeparatorMenuItem(),
                                        ExecuteDisplayAction.asMenuItem(this),
@@ -374,7 +379,7 @@ public class DisplayEditorInstance implements AppInstance
         model_name_listener.propertyChanged(model.propName(), null, null);
     }
 
-    void reloadDisplay()
+    public void reloadDisplay()
     {
         loadDisplay(dock_item.getInput());
     }
@@ -404,7 +409,7 @@ public class DisplayEditorInstance implements AppInstance
         });
     }
 
-    void doSave(final JobMonitor monitor) throws Exception
+    public void doSave(final JobMonitor monitor) throws Exception
     {
         save_job = monitor;
 
@@ -459,7 +464,7 @@ public class DisplayEditorInstance implements AppInstance
             else
             {   // Save-As with proper file name
                 dock_item.setInput(proper.toURI());
-                if (! dock_item.save_as(monitor))
+                if (! dock_item.save_as(monitor, dock_item.getTabPane().getScene().getWindow()))
                     dock_item.setInput(orig_input);
             }
         }

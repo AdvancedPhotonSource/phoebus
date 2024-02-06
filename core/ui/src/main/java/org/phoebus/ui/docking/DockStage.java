@@ -16,9 +16,13 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.logging.Level;
+import java.util.stream.Collectors;
 
+import javafx.scene.input.MouseEvent;
 import org.phoebus.framework.jobs.JobManager;
 import org.phoebus.framework.workbench.Locations;
 import org.phoebus.ui.application.Messages;
@@ -108,7 +112,6 @@ public class DockStage
      *
      *  @param stage Stage, should be empty
      *  @param tabs Zero or more initial {@link DockItem}s
-     *  @throws Exception on error
      *
      *  @return {@link DockPane} that was added to the {@link Stage}
      */
@@ -122,14 +125,22 @@ public class DockStage
      *  <p>Adds a Scene with a BorderPane layout and a DockPane in the center
      *
      *  @param stage Stage, should be empty
-     *  @param geometry_spec A geometry specification "{width}x{height}+{x}+{y}", see {@link Geometry}
+     *  @param geometry A geometry specification "{width}x{height}+{x}+{y}", see {@link Geometry}
      *  @param tabs Zero or more initial {@link DockItem}s
-     *  @throws Exception on error
      *
      *  @return {@link DockPane} that was added to the {@link Stage}
      */
     public static DockPane configureStage(final Stage stage, final Geometry geometry, final DockItem... tabs)
     {
+        stage.addEventFilter(MouseEvent.MOUSE_MOVED, mouseEvent -> {
+            // Filtering MOUSE_MOVED events from unfocused windows prevents tooltips
+            // from displaying in unfocused windows. This, in turn, prevents unfocused
+            // windows from receiving the focus as a consequence on Windows and Mac OS.
+            if (!stage.focusedProperty().get()) {
+                mouseEvent.consume();
+            }
+        });
+
         stage.getProperties().put(KEY_ID, createID("DockStage"));
 
         final DockPane pane = new DockPane(tabs);
@@ -191,8 +202,18 @@ public class DockStage
             // and on success close them
             JobManager.schedule("Close " + stage.getTitle(), monitor ->
             {
-                if (prepareToCloseItems(stage))
+                boolean shouldCloseStage = PhoebusApplication.confirmationDialogWhenUnsavedChangesExist(stage,
+                                                                                                        Messages.UnsavedChanges_wouldYouLikeToSaveAnyChangesBeforeClosingTheWindow,
+                                                                                                        Messages.UnsavedChanges_close,
+                                                                                                        monitor);
+
+                if (shouldCloseStage) {
+                    if (!DockStage.prepareToCloseItems(stage)) {
+                        return;
+                    }
+
                     Platform.runLater(() -> closeItems(stage));
+                }
             });
         });
 
@@ -361,6 +382,25 @@ public class DockStage
                         final DockItemWithInput item = (DockItemWithInput) tab;
                         if (input.equals(item.getInput()) &&
                             item.getApplication().getAppDescriptor().getName().equals(application_name))
+                            return item;
+                    }
+        return null;
+    }
+
+    /** Locate DockItemWithInput with input
+     *  @param input Input, must not be <code>null</code>
+     *  @return {@link DockItemWithInput} or <code>null</code> if not found
+     */
+    public static DockItemWithInput getDockItemWithInput(URI input)
+    {
+        Objects.requireNonNull(input);
+        for (Stage stage : getDockStages())
+            for (DockPane pane : getDockPanes(stage))
+                for (DockItem tab : pane.getDockItems())
+                    if (tab instanceof DockItemWithInput)
+                    {
+                        DockItemWithInput item = (DockItemWithInput) tab;
+                        if (input.equals(item.getInput()))
                             return item;
                     }
         return null;

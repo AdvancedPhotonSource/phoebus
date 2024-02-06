@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 
+import javafx.util.Pair;
 import org.csstudio.javafx.rtplot.Axis;
 import org.csstudio.javafx.rtplot.AxisRange;
 import org.csstudio.javafx.rtplot.Messages;
@@ -236,7 +237,7 @@ public class PlotProcessor<XTYPE extends Comparable<XTYPE>>
         });
     }
 
-    /** Round value range up/down to add a little room above & below the exact range.
+    /** Round value range {@literal up/down to add a little room above & below the exact range.}
      *  This results in "locking" to a nice looking range for a while
      *  until a new sample outside of the rounded range is added.
      *
@@ -385,7 +386,7 @@ public class PlotProcessor<XTYPE extends Comparable<XTYPE>>
         });
     }
 
-    /** @param plot Plot where annotation is added
+    /** 
      *  @param trace Trace to which a annotation should be added
      *  @param text Text for the annotation
      */
@@ -490,32 +491,26 @@ public class PlotProcessor<XTYPE extends Comparable<XTYPE>>
                         }
                     }
                     if (axis.isLogarithmic())
-                    {   // Perform adjustment in log space.
-                        // But first, refuse to deal with <= 0
-                        if (low <= 0.0)
-                            low = 1;
-                        if (high <= low)
-                            high = low * 100.0;
-                        low = Log10.log10(low);
-                        high = Log10.log10(high);
-                    }
-                    final ValueRange rounded = roundValueRange(low, high);
-                    low = rounded.getLow();
-                    high = rounded.getHigh();
-                    if (axis.isLogarithmic())
                     {
-                        low = Log10.pow10(low);
-                        high = Log10.pow10(high);
+                        low = Log10.pow10(Math.floor(Log10.log10(low))); // Note: may set "low" to 0.0.
+                        high = Log10.pow10(Math.ceil(Log10.log10(high)));
+                        Pair<Double, Double> adjustedRange = axis.ticks.adjustRange(low, high);
+                        low = adjustedRange.getKey();
+                        high = adjustedRange.getValue();
+
                     }
-                    else
-                    {   // Stretch range a little bit
+                    else {
+                        final ValueRange rounded = roundValueRange(low, high);
+                        low = rounded.getLow();
+                        high = rounded.getHigh();
+                        // Stretch range a little bit
                         // (but not for log scale, where low just above 0
                         //  could be stretched to <= 0)
                         final double headroom = (high - low) * 0.05;
                         low -= headroom;
                         high += headroom;
-
                     }
+
                     // Autoscale happens 'all the time'.
                     // Do not use undo, but notify listeners.
                     if (low != high)

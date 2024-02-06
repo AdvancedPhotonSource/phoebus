@@ -20,15 +20,16 @@ package org.phoebus.applications.saveandrestore;
 
 import javafx.fxml.FXMLLoader;
 import org.phoebus.applications.saveandrestore.ui.SaveAndRestoreController;
-import org.phoebus.applications.saveandrestore.ui.search.SearchToolbarController;
 import org.phoebus.framework.nls.NLS;
 import org.phoebus.framework.persistence.Memento;
 import org.phoebus.framework.spi.AppDescriptor;
 import org.phoebus.framework.spi.AppInstance;
+import org.phoebus.security.tokens.ScopedAuthenticationToken;
 import org.phoebus.ui.docking.DockItem;
 import org.phoebus.ui.docking.DockPane;
 
 import java.net.URI;
+import java.util.List;
 import java.util.ResourceBundle;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -36,7 +37,7 @@ import java.util.logging.Logger;
 public class SaveAndRestoreInstance implements AppInstance {
 
     private final AppDescriptor appDescriptor;
-    private SaveAndRestoreController controller;
+    private final SaveAndRestoreController saveAndRestoreController;
 
     public SaveAndRestoreInstance(AppDescriptor appDescriptor, URI uri) {
         this.appDescriptor = appDescriptor;
@@ -53,9 +54,6 @@ public class SaveAndRestoreInstance implements AppInstance {
                     if (clazz.isAssignableFrom(SaveAndRestoreController.class)) {
                         return clazz.getConstructor(URI.class).newInstance(uri);
                     }
-                    else if(clazz.isAssignableFrom(SearchToolbarController.class)){
-                        return clazz.getConstructor().newInstance();
-                    }
                 } catch (Exception e) {
                     Logger.getLogger(SaveAndRestoreInstance.class.getName()).log(Level.WARNING, "Failed to load Save & Restore UI", e);
                 }
@@ -66,9 +64,9 @@ public class SaveAndRestoreInstance implements AppInstance {
             Logger.getLogger(SaveAndRestoreApplication.class.getName()).log(Level.SEVERE, "Failed loading fxml", e);
         }
 
-        controller = loader.getController();
+        saveAndRestoreController = loader.getController();
 
-        tab.setOnCloseRequest(event -> controller.saveLocalState());
+        tab.setOnCloseRequest(event -> saveAndRestoreController.handleTabClosed());
 
         DockPane.getActiveDockPane().addTab(tab);
     }
@@ -80,10 +78,14 @@ public class SaveAndRestoreInstance implements AppInstance {
 
     @Override
     public void save(Memento memento) {
-        controller.saveLocalState();
+        saveAndRestoreController.saveLocalState();
     }
 
     public void openResource(URI uri) {
-        controller.openResource(uri);
+        saveAndRestoreController.openResource(uri);
+    }
+
+    public void secureStoreChanged(List<ScopedAuthenticationToken> validTokens){
+        saveAndRestoreController.secureStoreChanged(validTokens);
     }
 }

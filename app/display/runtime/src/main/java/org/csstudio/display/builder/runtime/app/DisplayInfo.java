@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015-2017 Oak Ridge National Laboratory.
+ * Copyright (c) 2015-2023 Oak Ridge National Laboratory.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -13,7 +13,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
-import java.util.Objects;
+import java.util.Locale;
 import java.util.logging.Level;
 
 import org.csstudio.display.builder.model.DisplayModel;
@@ -58,7 +58,7 @@ public class DisplayInfo
         // Get basic file or http 'path' from path
         final String path;
         if (uri.getScheme() == null  ||  uri.getScheme().equals("file"))
-            path = uri.getRawPath();
+            path = uri.getPath();
         else
         {
             final StringBuilder buf = new StringBuilder();
@@ -113,7 +113,26 @@ public class DisplayInfo
      */
     public static DisplayInfo forModel(final DisplayModel model)
     {
-        return new DisplayInfo(model.getUserData(DisplayModel.USER_DATA_INPUT_FILE),
+        String path;
+        {
+            String userDataInputFile = model.getUserData(DisplayModel.USER_DATA_INPUT_FILE);
+            String userDataInputFile_lowerCase = userDataInputFile.toLowerCase(Locale.ROOT);
+            if (   !userDataInputFile_lowerCase.startsWith("/")
+                && !userDataInputFile_lowerCase.startsWith("examples:")
+                && !userDataInputFile_lowerCase.startsWith("file:")
+                && !userDataInputFile_lowerCase.startsWith("http:")
+                && !userDataInputFile_lowerCase.startsWith("https:")
+                && !userDataInputFile_lowerCase.startsWith("ftp:")
+                && !userDataInputFile_lowerCase.startsWith("jar:")) {
+                // Add leading '/' and replace occurrences of '\' by '/' in the file path on Windows:
+                path = "/" + userDataInputFile.replace('\\', '/');
+            }
+            else {
+                path = userDataInputFile;
+            }
+        }
+
+        return new DisplayInfo(path,
                 model.getDisplayName(),
                 model.propMacros().getValue(),
                 false);
@@ -131,7 +150,11 @@ public class DisplayInfo
             this.name = basename(path);
         else
             this.name = name;
-        this.macros = Objects.requireNonNull(macros);
+        // 'Normalize' the macros, define specs based on the current values
+        // (which are sorted) to assert we identify a display with macros
+        // no matter in which order they were spec'ed
+        this.macros = new Macros();
+        macros.forEach(this.macros::add);
         this.resolve = resolve;
     }
 
@@ -203,7 +226,10 @@ public class DisplayInfo
 
         // In path, keep ':' and '/', but replace spaces
         // Windows platform tweak replace \ with /
-        buf.append(path.replace(" ", "%20").replace('\\', '/'));
+        buf.append(path.replace(" ", "%20")
+                       .replace('\\', '/')
+                       .replace("[", "%5B")
+                       .replace("]", "%5D"));
 
         // Add macros as path parameters
         boolean first = true;

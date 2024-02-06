@@ -29,21 +29,8 @@ import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
+import javafx.scene.control.*;
 import javafx.scene.control.Alert.AlertType;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.ContextMenu;
-import javafx.scene.control.Label;
-import javafx.scene.control.MenuItem;
-import javafx.scene.control.SelectionMode;
-import javafx.scene.control.TableCell;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableRow;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
-import javafx.scene.control.Tooltip;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.BorderPane;
@@ -53,30 +40,24 @@ import javafx.util.Callback;
 import org.phoebus.applications.saveandrestore.DirectoryUtilities;
 import org.phoebus.applications.saveandrestore.Messages;
 import org.phoebus.applications.saveandrestore.SaveAndRestoreApplication;
-import org.phoebus.applications.saveandrestore.model.CompositeSnapshot;
-import org.phoebus.applications.saveandrestore.model.CompositeSnapshotData;
-import org.phoebus.applications.saveandrestore.model.Node;
-import org.phoebus.applications.saveandrestore.model.NodeType;
-import org.phoebus.applications.saveandrestore.model.Tag;
+import org.phoebus.applications.saveandrestore.model.*;
 import org.phoebus.applications.saveandrestore.ui.ImageRepository;
+import org.phoebus.applications.saveandrestore.ui.SaveAndRestoreBaseController;
 import org.phoebus.applications.saveandrestore.ui.SaveAndRestoreController;
 import org.phoebus.applications.saveandrestore.ui.SaveAndRestoreService;
 import org.phoebus.framework.jobs.JobManager;
+import org.phoebus.ui.dialog.DialogHelper;
 import org.phoebus.ui.dialog.ExceptionDetailsErrorDialog;
 import org.phoebus.ui.javafx.ImageCache;
 import org.phoebus.util.time.TimestampFormats;
 
 import java.text.MessageFormat;
 import java.time.Instant;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.Stack;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-public class CompositeSnapshotController {
+public class CompositeSnapshotController extends SaveAndRestoreBaseController {
 
     @FXML
     private StackPane root;
@@ -144,6 +125,7 @@ public class CompositeSnapshotController {
     private ChangeListener<String> nodeNameChangeListener;
     private ChangeListener<String> descriptionChangeListener;
 
+
     public CompositeSnapshotController(CompositeSnapshotTab compositeSnapshotTab, SaveAndRestoreController saveAndRestoreController) {
         this.compositeSnapshotTab = compositeSnapshotTab;
         this.saveAndRestoreController = saveAndRestoreController;
@@ -152,7 +134,7 @@ public class CompositeSnapshotController {
     @FXML
     public void initialize() {
 
-        snapshotTable.getStylesheets().add(SnapshotTable.class.getResource("/style.css").toExternalForm());
+        snapshotTable.getStylesheets().add(CompareSnapshotsController.class.getResource("/save-and-restore-style.css").toExternalForm());
 
         saveAndRestoreService = SaveAndRestoreService.getInstance();
 
@@ -166,8 +148,9 @@ public class CompositeSnapshotController {
             snapshotTable.refresh();
         });
 
-        deleteMenuItem.disableProperty().bind(Bindings.createBooleanBinding(() -> snapshotTable.getSelectionModel().getSelectedItems().isEmpty(),
-                snapshotTable.getSelectionModel().getSelectedItems()));
+        deleteMenuItem.disableProperty().bind(Bindings.createBooleanBinding(() ->
+                        snapshotTable.getSelectionModel().getSelectedItems().isEmpty() || userIdentity.isNull().get(),
+                snapshotTable.getSelectionModel().getSelectedItems(), userIdentity));
 
         snapshotDateColumn.setCellFactory(new Callback<>() {
             @Override
@@ -273,7 +256,9 @@ public class CompositeSnapshotController {
         });
 
         compositeSnapshotNameField.textProperty().bindBidirectional(compositeSnapshotNameProperty);
+        compositeSnapshotNameField.disableProperty().bind(userIdentity.isNull());
         descriptionTextArea.textProperty().bindBidirectional(compositeSnapshotDescriptionProperty);
+        descriptionTextArea.disableProperty().bind(userIdentity.isNull());
         compositeSnapshotLastModifiedDateField.textProperty().bindBidirectional(lastUpdatedProperty);
         compositeSnapshotCreatedDateField.textProperty().bindBidirectional(createdDateProperty);
         createdByField.textProperty().bindBidirectional(createdByProperty);
@@ -285,8 +270,9 @@ public class CompositeSnapshotController {
 
         saveButton.disableProperty().bind(Bindings.createBooleanBinding(() -> dirty.not().get() ||
                         compositeSnapshotDescriptionProperty.isEmpty().get() ||
-                        compositeSnapshotNameProperty.isEmpty().get(),
-                dirty, compositeSnapshotDescriptionProperty, compositeSnapshotNameProperty));
+                        compositeSnapshotNameProperty.isEmpty().get() ||
+                        userIdentity.isNull().get(),
+                dirty, compositeSnapshotDescriptionProperty, compositeSnapshotNameProperty, userIdentity));
 
         snapshotTable.setOnDragOver(event -> {
             if (event.getDragboard().hasContent(SaveAndRestoreApplication.NODE_SELECTION_FORMAT)) {
@@ -296,37 +282,16 @@ public class CompositeSnapshotController {
         });
 
         snapshotTable.setOnDragDropped(event -> {
+            if (userIdentity.isNull().get()) {
+                event.consume();
+                return;
+            }
             List<Node> sourceNodes = (List<Node>) event.getDragboard().getContent(SaveAndRestoreApplication.NODE_SELECTION_FORMAT);
             if (!mayDrop(sourceNodes)) {
                 return;
             }
             disabledUi.set(true);
-            checkForDuplicatePVs(sourceNodes, duplicates -> {
-                disabledUi.set(false);
-                if (duplicates.isEmpty()) {
-                    snapshotEntries.addAll(sourceNodes);
-                } else {
-                    int maxItems = 10;
-                    StringBuilder stringBuilder = new StringBuilder();
-                    for (int i = 0; i < Math.min(duplicates.size(), maxItems); i++) {
-                        stringBuilder.append(duplicates.get(i)).append(System.lineSeparator());
-                    }
-                    if (duplicates.size() > maxItems) {
-                        stringBuilder.append(".").append(System.lineSeparator())
-                                .append(".").append(System.lineSeparator())
-                                .append(".").append(System.lineSeparator());
-                        stringBuilder.append(MessageFormat.format(Messages.duplicatePVNamesAdditionalItems, duplicates.size() - maxItems));
-                    }
-
-                    Platform.runLater(() -> {
-                        Alert alert = new Alert(AlertType.ERROR);
-                        alert.setTitle(Messages.errorGeneric);
-                        alert.setHeaderText(Messages.duplicatePVNamesFoundInSelection);
-                        alert.setContentText(stringBuilder.toString());
-                        alert.showAndWait();
-                    });
-                }
-            });
+            addToCompositeSnapshot(sourceNodes);
         });
 
         progressIndicator.visibleProperty().bind(disabledUi);
@@ -337,14 +302,12 @@ public class CompositeSnapshotController {
                 compositeSnapshotTab.annotateDirty(n);
             }
         });
-
     }
 
     @FXML
     public void save() {
-        doSave(compositeSnapshot -> {
-            loadCompositeSnapshot(compositeSnapshot.getCompositeSnapshotNode());
-        });
+        doSave(compositeSnapshot ->
+                loadCompositeSnapshot(compositeSnapshot.getCompositeSnapshotNode(), Collections.emptyList()));
     }
 
     private void doSave(Consumer<CompositeSnapshot> completion) {
@@ -368,7 +331,7 @@ public class CompositeSnapshotController {
                     compositeSnapshotData.setUniqueId(compositeSnapshotNode.getUniqueId());
                     compositeSnapshot = saveAndRestoreService.updateCompositeSnapshot(compositeSnapshot);
                 }
-                compositeSnapshotTab.handleNodeNameSet(compositeSnapshot.getCompositeSnapshotNode().getName());
+                compositeSnapshotTab.setNodeName(compositeSnapshot.getCompositeSnapshotNode().getName());
                 dirty.set(false);
                 completion.accept(compositeSnapshot);
             } catch (Exception e1) {
@@ -389,7 +352,7 @@ public class CompositeSnapshotController {
      *
      * @param node An existing {@link Node} of type {@link NodeType#COMPOSITE_SNAPSHOT}.
      */
-    public void loadCompositeSnapshot(final Node node) {
+    public void loadCompositeSnapshot(final Node node, final List<Node> snapshotNodes) {
         compositeSnapshotNode = node;
         disabledUi.set(true);
         removeListeners();
@@ -409,7 +372,9 @@ public class CompositeSnapshotController {
                     lastUpdatedProperty.set(compositeSnapshotNode.getLastModified() != null ?
                             TimestampFormats.SECONDS_FORMAT.format(Instant.ofEpochMilli(compositeSnapshotNode.getLastModified().getTime())) : null);
                     createdByProperty.set(compositeSnapshotNode.getUserName());
+                    addToCompositeSnapshot(snapshotNodes);
                     addListeners();
+
                 });
             } catch (Exception e) {
                 ExceptionDetailsErrorDialog.openError(root, Messages.errorGeneric, Messages.errorUnableToRetrieveData, e);
@@ -433,13 +398,21 @@ public class CompositeSnapshotController {
     /**
      * Configures the controller to create a new composite snapshot.
      *
-     * @param parentNode The parent {@link Node} for the new composite, i.e. must be a
-     *                   {@link Node} of type {@link NodeType#FOLDER}.
+     * @param parentNode    The parent {@link Node} for the new composite, i.e. must be a
+     *                      {@link Node} of type {@link NodeType#FOLDER}.
+     * @param snapshotNodes Potentially empty list of {@link Node}s of type {@link NodeType#SNAPSHOT}
+     *                      or {@link NodeType#COMPOSITE_SNAPSHOT}, or both.
      */
-    public void newCompositeSnapshot(Node parentNode) {
+    public void newCompositeSnapshot(Node parentNode, List<Node> snapshotNodes) {
         parentFolder = parentNode;
         compositeSnapshotNode = Node.builder().nodeType(NodeType.COMPOSITE_SNAPSHOT).build();
-        dirty.set(false);
+        if (snapshotNodes.isEmpty()) {
+            dirty.set(false);
+        } else {
+            dirty.set(true);
+            //snapshotEntries.addAll(snapshotNodes);
+            addToCompositeSnapshot(snapshotNodes);
+        }
         addListeners();
         Platform.runLater(() -> compositeSnapshotNameField.requestFocus());
     }
@@ -462,13 +435,13 @@ public class CompositeSnapshotController {
     /**
      * Calls service to determine if the list of PV names found in referenced snapshots contains duplicates.
      *
-     * @param droppedSnapshots The snapshot {@link Node}s dropped by user into the editor tab.
-     * @param completion       Callback receiving a list of duplicate PV names.
+     * @param sourceNodes The snapshot {@link Node}s dropped by user into the editor tab.
      */
-    private void checkForDuplicatePVs(List<Node> droppedSnapshots, Consumer<List<String>> completion) {
+    public void addToCompositeSnapshot(List<Node> sourceNodes) {
         JobManager.schedule("Check snapshot PV duplicates", monitor -> {
+            disabledUi.set(true);
             List<String> allSnapshotIds = snapshotEntries.stream().map(Node::getUniqueId).collect(Collectors.toList());
-            allSnapshotIds.addAll(droppedSnapshots.stream().map(Node::getUniqueId).collect(Collectors.toList()));
+            allSnapshotIds.addAll(sourceNodes.stream().map(Node::getUniqueId).collect(Collectors.toList()));
             List<String> duplicates = null;
             try {
                 duplicates = saveAndRestoreService.checkCompositeSnapshotConsistency(allSnapshotIds);
@@ -478,7 +451,33 @@ public class CompositeSnapshotController {
                         Messages.duplicatePVNamesCheckFailed,
                         e);
             }
-            completion.accept(duplicates);
+            disabledUi.set(false);
+            if (duplicates != null && duplicates.isEmpty()) {
+                snapshotEntries.addAll(sourceNodes);
+            } else {
+                int maxItems = 10;
+                StringBuilder stringBuilder = new StringBuilder();
+                int duplicatesSize = duplicates != null ? duplicates.size() : 0;
+                for (int i = 0; i < Math.min(duplicatesSize, maxItems); i++) {
+                    stringBuilder.append(duplicates.get(i)).append(System.lineSeparator());
+                }
+                if (duplicatesSize > maxItems) {
+                    stringBuilder.append(".").append(System.lineSeparator())
+                            .append(".").append(System.lineSeparator())
+                            .append(".").append(System.lineSeparator());
+                    stringBuilder.append(MessageFormat.format(Messages.duplicatePVNamesAdditionalItems, duplicates.size() - maxItems));
+                }
+
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(AlertType.ERROR);
+                    alert.setTitle(Messages.errorGeneric);
+                    alert.setHeaderText(Messages.duplicatePVNamesFoundInSelection);
+                    alert.setContentText(stringBuilder.toString());
+                    DialogHelper.positionDialog(alert, snapshotTable, -300, -300);
+                    alert.showAndWait();
+
+                });
+            }
         });
     }
 
@@ -505,5 +504,4 @@ public class CompositeSnapshotController {
         compositeSnapshotNameProperty.removeListener(nodeNameChangeListener);
         compositeSnapshotDescriptionProperty.removeListener(descriptionChangeListener);
     }
-
 }
